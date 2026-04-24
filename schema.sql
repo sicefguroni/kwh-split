@@ -1,0 +1,102 @@
+-- KWH-Split Database Schema
+-- PostgreSQL schema for expense splitting application
+
+-- Create USERS table
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create GROUPS table
+CREATE TABLE groups (
+    group_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    currency VARCHAR(10) DEFAULT 'USD',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create GROUP_MEMBERS table (junction table)
+CREATE TABLE group_members (
+    member_id SERIAL PRIMARY KEY,
+    group_id INT NOT NULL,
+    user_id INT NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'member',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_group_members_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
+    CONSTRAINT fk_group_members_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    CONSTRAINT unique_group_user UNIQUE(group_id, user_id)
+);
+
+-- Create EXPENSERS (Expenses) table
+CREATE TABLE expensers (
+    expense_id SERIAL PRIMARY KEY,
+    group_id INT NOT NULL,
+    title_description VARCHAR(255) NOT NULL,
+    total_amount DECIMAL(10, 2) NOT NULL,
+    sale_date DATE NOT NULL,
+    tax_amount DECIMAL(10, 2) DEFAULT 0.00,
+    tip_amount DECIMAL(10, 2) DEFAULT 0.00,
+    split_type VARCHAR(50) DEFAULT 'equal',
+    receipt_items_flag BOOLEAN DEFAULT false,
+    receipt_image_url VARCHAR(500),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_expensers_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE
+);
+
+-- Create RECEIPT_ITEMS table
+CREATE TABLE receipt_items (
+    item_id SERIAL PRIMARY KEY,
+    expense_id INT NOT NULL,
+    item_name VARCHAR(255) NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_receipt_items_expense FOREIGN KEY (expense_id) REFERENCES expensers(expense_id) ON DELETE CASCADE
+);
+
+-- Create EXPENSE_SPLITS table
+CREATE TABLE expense_splits (
+    split_id SERIAL PRIMARY KEY,
+    expense_id INT NOT NULL,
+    user_id INT NOT NULL,
+    amount_owed DECIMAL(10, 2) NOT NULL,
+    percentage DECIMAL(5, 2),
+    share DECIMAL(10, 2),
+    is_settled BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_expense_splits_expense FOREIGN KEY (expense_id) REFERENCES expensers(expense_id) ON DELETE CASCADE,
+    CONSTRAINT fk_expense_splits_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- Create RECEIPT_ITEMS_ASSIGNMENTS table
+CREATE TABLE receipt_items_assignments (
+    assignment_id SERIAL PRIMARY KEY,
+    item_id INT NOT NULL,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_assignments_item FOREIGN KEY (item_id) REFERENCES receipt_items(item_id) ON DELETE CASCADE,
+    CONSTRAINT fk_assignments_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    CONSTRAINT unique_item_user UNIQUE(item_id, user_id)
+);
+
+-- Create indexes for better query performance
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_group_members_group ON group_members(group_id);
+CREATE INDEX idx_group_members_user ON group_members(user_id);
+CREATE INDEX idx_expensers_group ON expensers(group_id);
+CREATE INDEX idx_receipt_items_expense ON receipt_items(expense_id);
+CREATE INDEX idx_expense_splits_expense ON expense_splits(expense_id);
+CREATE INDEX idx_expense_splits_user ON expense_splits(user_id);
+CREATE INDEX idx_receipt_items_assignments_item ON receipt_items_assignments(item_id);
+CREATE INDEX idx_receipt_items_assignments_user ON receipt_items_assignments(user_id);
