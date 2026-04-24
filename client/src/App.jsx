@@ -11,7 +11,7 @@ function App() {
 
   const [expenses, setExpenses] = useState([]);
   const [activeTab, setActiveTab] = useState('EXPENSES');
-  
+
   // Add Expense Modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [description, setDescription] = useState('');
@@ -72,17 +72,17 @@ function App() {
 
     // 3. Update UI instantly
     setExpenses((prev) => [newExpense, ...prev].sort((a, b) => b.timestamp - a.timestamp));
-    
+
     // 4. Try syncing immediately if online
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-       navigator.serviceWorker.ready.then(reg => {
-         if (reg.sync) {
-           reg.sync.register('sync-expenses').catch(err => console.error('Sync registration failed:', err));
-         }
-       });
+      navigator.serviceWorker.ready.then(reg => {
+        if (reg.sync) {
+          reg.sync.register('sync-expenses').catch(err => console.error('Sync registration failed:', err));
+        }
+      });
     } else {
-       // Fallback
-       window.dispatchEvent(new Event('online'));
+      // Fallback
+      window.dispatchEvent(new Event('online'));
     }
 
     setDescription('');
@@ -102,13 +102,13 @@ function App() {
 
     // 4. Try syncing immediately if online
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-       navigator.serviceWorker.ready.then(reg => {
-         if (reg.sync) {
-           reg.sync.register('sync-expenses').catch(err => console.error('Sync registration failed:', err));
-         }
-       });
+      navigator.serviceWorker.ready.then(reg => {
+        if (reg.sync) {
+          reg.sync.register('sync-expenses').catch(err => console.error('Sync registration failed:', err));
+        }
+      });
     } else {
-       window.dispatchEvent(new Event('online'));
+      window.dispatchEvent(new Event('online'));
     }
   };
 
@@ -127,14 +127,14 @@ function App() {
   return (
     <div className="app-container">
       <OfflineBanner />
-      
+
       {/* Header Area */}
       <header className="app-header">
         <div className="top-nav">
           <ChevronLeft size={24} />
           <MoreVertical size={24} />
         </div>
-        
+
         <div className="group-info">
           <div className="group-image">
             {/* Placeholder for group image */}
@@ -189,31 +189,31 @@ function App() {
 
         {activeTab === 'BALANCES' && (
           <div className="balances-list">
-             <div className="balance-card">
-               <div className="balance-user">
-                 <div className="user-avatar"><User size={16} /></div>
-                 <span>Kyle Lee</span>
-               </div>
-               <div className="balance-amount owes-you">
-                 <span className="label">owes you</span>
-                 <span className="value">₱370.00</span>
-               </div>
-             </div>
-             <div className="balance-card">
-               <div className="balance-user">
-                 <div className="user-avatar"><User size={16} /></div>
-                 <span>Ceferino Jumao-as</span>
-               </div>
-               <div className="balance-amount owes-you">
-                 <span className="label">owes you</span>
-                 <span className="value">₱270.00</span>
-                 <span className="sub-label">₱100.00 PAID</span>
-               </div>
-             </div>
-             
-             <div className="settle-btn-container">
-               <button className="action-btn">Settle payment</button>
-             </div>
+            <div className="balance-card">
+              <div className="balance-user">
+                <div className="user-avatar"><User size={16} /></div>
+                <span>Kyle Lee</span>
+              </div>
+              <div className="balance-amount owes-you">
+                <span className="label">owes you</span>
+                <span className="value">₱370.00</span>
+              </div>
+            </div>
+            <div className="balance-card">
+              <div className="balance-user">
+                <div className="user-avatar"><User size={16} /></div>
+                <span>Ceferino Jumao-as</span>
+              </div>
+              <div className="balance-amount owes-you">
+                <span className="label">owes you</span>
+                <span className="value">₱270.00</span>
+                <span className="sub-label">₱100.00 PAID</span>
+              </div>
+            </div>
+
+            <div className="settle-btn-container">
+              <button className="action-btn">Settle payment</button>
+            </div>
           </div>
         )}
 
@@ -238,7 +238,7 @@ function App() {
             </div>
 
             <div className="add-member-container">
-               <button className="action-btn">Add member</button>
+              <button className="action-btn">Add member</button>
             </div>
           </div>
         )}
