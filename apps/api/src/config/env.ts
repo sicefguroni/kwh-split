@@ -16,7 +16,12 @@ const EnvSchema = z.object({
     .default("false")
     .transform((value) => value.toLowerCase() === "true"),
 
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: z.string().url().optional(),
+  DATABASE_HOST: z.string().default("localhost"),
+  DATABASE_PORT: z.coerce.number().int().positive().default(5432),
+  DATABASE_USER: z.string().default("split"),
+  DATABASE_PASSWORD: z.string().default("split"),
+  DATABASE_NAME: z.string().default("split_dev"),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -26,5 +31,15 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = Object.freeze(parsed.data);
+const config = parsed.data;
+const databaseUrl =
+  config.DATABASE_URL ??
+  `postgres://${encodeURIComponent(config.DATABASE_USER)}:${encodeURIComponent(
+    config.DATABASE_PASSWORD,
+  )}@${config.DATABASE_HOST}:${config.DATABASE_PORT}/${config.DATABASE_NAME}`;
+
+export const env = Object.freeze({
+  ...config,
+  DATABASE_URL: databaseUrl,
+});
 export type Env = typeof env;

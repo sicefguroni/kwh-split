@@ -2,7 +2,11 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-export function EmptyGroupsState() {
+interface EmptyGroupsStateProps {
+  onCreate?: () => void;
+}
+
+export function EmptyGroupsState({ onCreate }: EmptyGroupsStateProps) {
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
@@ -23,7 +27,7 @@ export function EmptyGroupsState() {
           </p>
         </div>
 
-        <Button size="md" disabled>
+        <Button size="md" onClick={onCreate}>
           Create a group
         </Button>
       </CardContent>

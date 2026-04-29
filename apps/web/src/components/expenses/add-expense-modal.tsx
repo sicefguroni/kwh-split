@@ -1,33 +1,63 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
+import { type GroupExpense, type GroupMember } from "@/hooks/use-groups";
 
 interface AddExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSubmit: (expense: GroupExpense) => void;
+  initialData?: GroupExpense | undefined;
+  members: GroupMember[];
+  currency: string;
 }
 
-const MEMBERS = [
-  { id: "1", name: "George" },
-  { id: "2", name: "Alice" },
-  { id: "3", name: "John" },
-  { id: "4", name: "May" },
-];
-
-export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
+export function AddExpenseModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  initialData,
+  members,
+  currency,
+}: AddExpenseModalProps) {
   const [step, setStep] = useState(1);
   const [expenseName, setExpenseName] = useState("");
   const [amount, setAmount] = useState("");
-  const [paidBy, setPaidBy] = useState("1");
-  const [date, setDate] = useState("");
+  const [paidBy, setPaidBy] = useState(members[0]?.id ?? "");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState("");
 
   const [splits, setSplits] = useState<Record<string, { selected: boolean; amount: string }>>(
-    MEMBERS.reduce((acc, member) => ({ ...acc, [member.id]: { selected: true, amount: "" } }), {})
+    members.reduce((acc, member) => ({ ...acc, [member.id]: { selected: true, amount: "" } }), {}),
   );
 
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setExpenseName(initialData?.name ?? "");
+    setAmount(initialData?.amount.toString() ?? "");
+    setPaidBy(initialData?.paidBy ?? members[0]?.id ?? "");
+    setDate(initialData?.date ?? new Date().toISOString().slice(0, 10));
+    setNote(initialData?.note ?? "");
+    setSplits(
+      members.reduce((acc, member) => {
+        const split = initialData?.splits.find((entry) => entry.memberId === member.id);
+        return {
+          ...acc,
+          [member.id]: {
+            selected: split ? split.amount > 0 : true,
+            amount: split ? split.amount.toString() : "",
+          },
+        };
+      }, {} as Record<string, { selected: boolean; amount: string }>),
+    );
+    setStep(initialData ? 3 : 1);
+    setError("");
+  }, [isOpen, initialData, members]);
 
   if (!isOpen) return null;
 
@@ -77,11 +107,40 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
   };
 
   const handleSubmit = () => {
-    // Submit logic here
-    onClose();
+    if (!expenseName.trim()) {
+      setError("Expense name is required.");
+      setStep(1);
+      return;
+    }
+
+    if (totalAmount <= 0) {
+      setError("Enter a valid amount.");
+      setStep(1);
+      return;
+    }
+
+    const expense: GroupExpense = {
+      id: initialData?.id ?? `expense-${Math.random().toString(36).slice(2)}`,
+      name: expenseName.trim(),
+      amount: totalAmount,
+      currency,
+      paidBy,
+      date,
+      note: note.trim(),
+      splits: Object.entries(splits)
+        .filter(([, split]) => split.selected)
+        .map(([memberId, split]) => ({ memberId, amount: parseFloat(split.amount) || 0 })),
+      status: initialData?.status ?? "pending",
+    };
+
+    onSubmit(expense);
     setStep(1);
     setExpenseName("");
     setAmount("");
+    setPaidBy(members[0]?.id ?? "");
+    setDate(new Date().toISOString().slice(0, 10));
+    setNote("");
+    setError("");
   };
 
   return (
@@ -89,8 +148,10 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
       <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={onClose} />
       
       <div className="relative w-full max-w-md overflow-hidden rounded-3xl bg-mint-50 shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-mint-100">
-        <button 
+        <button
+          type="button"
           onClick={onClose}
+          aria-label="Close expense modal"
           className="absolute right-4 top-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/50 text-ink-900 hover:bg-white/80"
         >
           <X className="h-4 w-4" />
@@ -109,14 +170,14 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
           </div>
 
           <div className="bg-ink-900 text-white text-center py-2 rounded-t-xl font-bold uppercase tracking-widest text-sm">
-            PADAGAT WHEN
+            {currency}
           </div>
           <div className="bg-[#0074B7] text-white text-center py-2 rounded-b-xl text-xs font-semibold mb-6">
             {step === 1 ? "Expense Info" : step === 2 ? "Split Method" : "Confirm"}
           </div>
         </div>
 
-        <div className="px-6 pb-6 pt-2 bg-white rounded-t-3xl min-h-[300px] flex flex-col">
+        <div className="px-6 pb-6 pt-2 bg-white rounded-t-3xl min-h-75 flex flex-col">
           {error && (
             <div className="mb-4 flex items-center gap-2 text-danger bg-danger/10 p-3 rounded-lg text-sm font-medium">
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -128,6 +189,7 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
             <div className="flex flex-col gap-4 flex-1">
               <Input
                 placeholder="Expense Name"
+                aria-label="Expense name"
                 value={expenseName}
                 onChange={(e) => setExpenseName(e.target.value)}
                 className="bg-mint-50 border-mint-200"
@@ -135,22 +197,27 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
               <Input
                 type="number"
                 placeholder="Amount"
+                aria-label="Expense amount"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="bg-mint-50 border-mint-200 font-bold"
               />
               <div className="flex items-center gap-2">
-                <select 
+                <select
                   value={paidBy}
                   onChange={(e) => setPaidBy(e.target.value)}
+                  aria-label="Paid by"
                   className="flex-1 h-12 rounded-xl border border-mint-200 bg-mint-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-mint-500/20"
                 >
                   <option value="" disabled>Paid By</option>
-                  {MEMBERS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>{member.name}</option>
+                  ))}
                 </select>
               </div>
               <Input
                 type="date"
+                aria-label="Expense date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 className="bg-mint-50 border-mint-200"
@@ -167,19 +234,20 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
           {step === 2 && (
             <div className="flex flex-col gap-3 flex-1">
               <div className="text-xs font-bold text-ink-500 uppercase px-2">Select who is involved</div>
-              <div className="flex-1 overflow-y-auto max-h-[250px] space-y-2 pr-2">
-                {MEMBERS.map(member => (
+              <div className="flex-1 overflow-y-auto max-h-62.5 space-y-2 pr-2">
+                {members.map((member) => (
                   <div key={member.id} className="flex items-center gap-3 p-3 rounded-xl border border-ink-100 bg-white">
                     <input 
                       type="checkbox" 
                       checked={splits[member.id]?.selected ?? false}
                       onChange={(e) => {
                         const checked = e.target.checked;
-                        setSplits(prev => {
+                        setSplits((prev) => {
                           const current = prev[member.id];
                           return current ? { ...prev, [member.id]: { ...current, selected: checked } } : prev;
                         });
                       }}
+                      aria-label={`Include ${member.name} in split`}
                       className="h-5 w-5 rounded border-ink-300 text-mint-600 focus:ring-mint-600"
                     />
                     <div className="flex items-center gap-2 flex-1">
@@ -190,13 +258,13 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
                     </div>
                     {splits[member.id]?.selected && (
                       <div className="flex items-center gap-1 w-24">
-                        <span className="text-sm font-medium text-ink-500">₱</span>
+                        <span className="text-sm font-medium text-ink-500">{currency}</span>
                         <Input 
                           type="number"
                           className="h-8 px-2 text-right text-sm"
                           value={splits[member.id]?.amount ?? ""}
                           onChange={(e) => {
-                            setSplits(prev => {
+                            setSplits((prev) => {
                               const current = prev[member.id];
                               return current ? { ...prev, [member.id]: { ...current, amount: e.target.value } } : prev;
                             });
@@ -227,7 +295,7 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
 
               <div className="space-y-3">
                 <div className="text-xs font-bold text-ink-500 uppercase">Split Details</div>
-                {MEMBERS.filter(m => splits[m.id]?.selected && parseFloat(splits[m.id]!.amount) > 0).map(member => (
+                {members.filter((member) => splits[member.id]?.selected && parseFloat(splits[member.id]!.amount) > 0).map((member) => (
                   <div key={member.id} className="flex justify-between items-center text-sm">
                     <div className="flex items-center gap-2">
                       <div className="h-6 w-6 rounded-full bg-ink-100 flex items-center justify-center text-[10px] font-bold text-ink-600">
@@ -235,7 +303,7 @@ export function AddExpenseModal({ isOpen, onClose }: AddExpenseModalProps) {
                       </div>
                       <span className="font-medium text-ink-700">{member.name}</span>
                     </div>
-                    <span className="font-bold text-ink-900">₱{parseFloat(splits[member.id]!.amount).toFixed(2)}</span>
+                    <span className="font-bold text-ink-900">{currency} {parseFloat(splits[member.id]!.amount).toFixed(2)}</span>
                   </div>
                 ))}
               </div>
