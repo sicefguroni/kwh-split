@@ -1,5 +1,5 @@
 import { apiClient } from "@/lib/api-client";
-import type { AuthResponse } from "./types";
+import type { AuthResponse, AuthUser } from "./types";
 import type { LoginFormValues, SignupFormValues } from "./schemas";
 
 export const authApi = {
@@ -20,7 +20,7 @@ export const authApi = {
   logout: () => apiClient.post<void>("/api/auth/logout"),
 
   me: (signal?: AbortSignal) =>
-    apiClient.get<AuthResponse>(
+    apiClient.get<{ user: AuthUser }>(
       "/api/auth/me",
       signal ? { signal } : undefined,
     ),

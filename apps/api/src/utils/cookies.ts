@@ -13,7 +13,7 @@ const REFRESH_COOKIE_PATH = "/api/auth";
 const baseOptions = (): CookieOptions => ({
   httpOnly: true,
   secure: env.COOKIE_SECURE,
-  sameSite: "lax",
+  sameSite: env.COOKIE_SECURE ? "none" : "lax",
   path: "/",
   ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
 });
