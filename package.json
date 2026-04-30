@@ -9,7 +9,7 @@
     "start": "pnpm -r --parallel --stream run start",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
-    "db:migrate": "pnpm --filter @split/api run db:migrate"
+    "db:migrate": "pnpm --filter @split/server run db:migrate"
   },
   "engines": {
     "node": ">=20"
