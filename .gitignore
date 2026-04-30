@@ -4,6 +4,7 @@ build
 .next
 .turbo
 .env
+.env.example
 .env.local
 .env.*.local
 *.log
