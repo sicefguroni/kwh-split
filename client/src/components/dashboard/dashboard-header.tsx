@@ -19,7 +19,7 @@ export function DashboardHeader({
     <header className="border-b border-ink-100/60 bg-white/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <div className="flex items-center gap-2">
-          <Logo size="sm" className="h-12 sm:h-14" />
+          <Logo size="sm" className="lg:h-8 md:h-7 h-6" />
         </div>
 
         <div className="flex items-center gap-3">

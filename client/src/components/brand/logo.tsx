@@ -14,7 +14,7 @@ const heightMap = {
 
 export function Logo({ size = "md", className }: LogoProps) {
   return (
-    <span className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-white p-2 shadow-sm ring-1 ring-black/5 sm:p-2.5">
+    <span className="inline-flex shrink-0 items-center justify-center">
       <img
         src={brandMarkPublicPath}
         alt="Split"

@@ -22,7 +22,7 @@ interface AddGroupModalProps {
   initialData?: GroupData;
 }
 
-const COMMON_CURRENCIES = ["PHP", "USD", "EUR", "SGD"];
+const COMMON_CURRENCIES = ["₱", "USD", "EUR", "SGD"];
 
 export function AddGroupModal({
   isOpen,
@@ -31,7 +31,7 @@ export function AddGroupModal({
   initialData,
 }: AddGroupModalProps) {
   const [name, setName] = useState("");
-  const [currency, setCurrency] = useState("PHP");
+  const [currency, setCurrency] = useState("₱");
   const [description, setDescription] = useState("");
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const [memberName, setMemberName] = useState("");
@@ -53,7 +53,7 @@ export function AddGroupModal({
       setError("");
     } else {
       setName("");
-      setCurrency("PHP");
+      setCurrency("₱");
       setDescription("");
       setImageUrl(undefined);
       setMembers([{ id: "1", name: "You", isAdmin: true }]);
