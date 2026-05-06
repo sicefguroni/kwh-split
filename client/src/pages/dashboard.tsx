@@ -70,7 +70,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white w-full lg:px-88">
       <DashboardHeader
         onLogout={handleLogout}
         isLoggingOut={logout.isPending}
@@ -79,9 +79,9 @@ export default function DashboardPage() {
 
       <div className="relative overflow-hidden px-4 text-white sm:px-6 pt-4 lg:pt-8">
         <div className="pointer-events-none absolute inset-0 opacity-40" />
-        <div className="relative z-10 mx-auto max-w-5xl space-y-10">
+        <div className="relative mx-auto max-w-5xl space-y-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-12">
-            <h1 className="mt-3 text-3xl font-semibold text-ink-900 tracking-tight sm:text-4xl">
+            <h1 className="mt-3 text-xl lg:text-3xl font-semibold text-ink-900 tracking-tight">
               Hello, {getFirstName(user?.name)}
             </h1>
 
@@ -97,7 +97,7 @@ export default function DashboardPage() {
               <Button
                 size="md"
                 aria-label="Add Group"
-                className="fixed bottom-4 right-4 z-30 h-14 w-14 rounded-full bg-white p-0 font-semibold text-slate-950 shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition hover:bg-slate-100 sm:static sm:h-11 sm:w-auto sm:px-6 sm:py-3 sm:shadow-lg"
+                className="fixed bottom-4 right-4 z-30 h-14 w-14 rounded-full bg-ink-900 p-0 font-semibold text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition hover:bg-slate-100 sm:static sm:h-11 sm:w-auto sm:px-6 sm:py-3 sm:shadow-lg"
                 onClick={() => setIsAddModalOpen(true)}
               >
                 <Plus className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" />
@@ -111,7 +111,7 @@ export default function DashboardPage() {
 
       <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 pt-8 sm:px-6 sm:py-10">
         <section className="flex flex-col gap-4">
-          <h2 className="text-xl font-semibold text-ink-900">Your groups</h2>
+          <h2 className="text-base lg:text-lg text-ink-900">Your groups</h2>
 
           <section aria-labelledby="groups-heading" className="flex flex-col gap-4">
             {groups.length === 0 ? (
