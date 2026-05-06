@@ -1,18 +1,24 @@
-import { useEffect, useState } from "react";
+import { Fragment } from "react";
 import { X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { type GroupExpense, type GroupMember } from "@/hooks/use-groups";
+import { type AddExpenseModalProps, type SplitType } from "./types";
+import { useExpenseForm } from "./use-expense-form";
 
-interface AddExpenseModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (expense: GroupExpense) => void;
-  initialData?: GroupExpense | undefined;
-  members: GroupMember[];
-  currency: string;
-}
+// =============================================================================
+// Constants
+// =============================================================================
+
+const STEP_LABELS: Record<number, string> = {
+  1: "Expense Info",
+  2: "Split Method",
+  3: "Confirm",
+};
+
+// =============================================================================
+// Component
+// =============================================================================
 
 export function AddExpenseModal({
   isOpen,
@@ -22,132 +28,32 @@ export function AddExpenseModal({
   members,
   currency,
 }: AddExpenseModalProps) {
-  const [step, setStep] = useState(1);
-  const [expenseName, setExpenseName] = useState("");
-  const [amount, setAmount] = useState("");
-  const [paidBy, setPaidBy] = useState(members[0]?.id ?? "");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [note, setNote] = useState("");
-
-  const [splits, setSplits] = useState<Record<string, { selected: boolean; amount: string }>>(
-    members.reduce((acc, member) => ({ ...acc, [member.id]: { selected: true, amount: "" } }), {}),
-  );
-
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    setExpenseName(initialData?.name ?? "");
-    setAmount(initialData?.amount.toString() ?? "");
-    setPaidBy(initialData?.paidBy ?? members[0]?.id ?? "");
-    setDate(initialData?.date ?? new Date().toISOString().slice(0, 10));
-    setNote(initialData?.note ?? "");
-    setSplits(
-      members.reduce((acc, member) => {
-        const split = initialData?.splits.find((entry) => entry.memberId === member.id);
-        return {
-          ...acc,
-          [member.id]: {
-            selected: split ? split.amount > 0 : true,
-            amount: split ? split.amount.toString() : "",
-          },
-        };
-      }, {} as Record<string, { selected: boolean; amount: string }>),
-    );
-    setStep(initialData ? 3 : 1);
-    setError("");
-  }, [isOpen, initialData, members]);
+  const {
+    step,
+    expenseName, setExpenseName,
+    amount, setAmount,
+    paidBy, setPaidBy,
+    date, setDate,
+    note, setNote,
+    splitType, setSplitType,
+    memberSplitInputs, updateMemberSplitInput,
+    totalAmount,
+    computedSplits,
+    error,
+    handleNextStep1,
+    handleNextStep2,
+    handleSubmit,
+    goToStep,
+  } = useExpenseForm({ isOpen, initialData, members, currency, onSubmit });
 
   if (!isOpen) return null;
-
-  const totalAmount = parseFloat(amount) || 0;
-
-  const handleNextStep1 = () => {
-    if (!expenseName || !amount) {
-      setError("Please fill in the expense name and amount.");
-      return;
-    }
-    setError("");
-    
-    // Default split equally
-    const selectedCount = Object.values(splits).filter(s => s.selected).length;
-    if (selectedCount > 0 && totalAmount > 0) {
-      const splitAmt = (totalAmount / selectedCount).toFixed(2);
-      const newSplits = { ...splits };
-      for (const id in newSplits) {
-        if (newSplits[id]?.selected) {
-          newSplits[id] = { ...newSplits[id]!, amount: splitAmt };
-        } else {
-          newSplits[id] = { ...newSplits[id]!, amount: "0" };
-        }
-      }
-      setSplits(newSplits);
-    }
-    
-    setStep(2);
-  };
-
-  const handleNextStep2 = () => {
-    // Validate split amount
-    let sum = 0;
-    for (const id in splits) {
-      if (splits[id]?.selected) {
-        sum += parseFloat(splits[id]!.amount) || 0;
-      }
-    }
-    
-    if (Math.abs(sum - totalAmount) > 0.01) {
-      setError(`Split amounts do not match total. Total: ${totalAmount}, Sum: ${sum}`);
-      return;
-    }
-    
-    setError("");
-    setStep(3);
-  };
-
-  const handleSubmit = () => {
-    if (!expenseName.trim()) {
-      setError("Expense name is required.");
-      setStep(1);
-      return;
-    }
-
-    if (totalAmount <= 0) {
-      setError("Enter a valid amount.");
-      setStep(1);
-      return;
-    }
-
-    const expense: GroupExpense = {
-      id: initialData?.id ?? `expense-${Math.random().toString(36).slice(2)}`,
-      name: expenseName.trim(),
-      amount: totalAmount,
-      currency,
-      paidBy,
-      date,
-      note: note.trim(),
-      splits: Object.entries(splits)
-        .filter(([, split]) => split.selected)
-        .map(([memberId, split]) => ({ memberId, amount: parseFloat(split.amount) || 0 })),
-      status: initialData?.status ?? "pending",
-    };
-
-    onSubmit(expense);
-    setStep(1);
-    setExpenseName("");
-    setAmount("");
-    setPaidBy(members[0]?.id ?? "");
-    setDate(new Date().toISOString().slice(0, 10));
-    setNote("");
-    setError("");
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={onClose} />
-      
+
       <div className="relative w-full max-w-md overflow-hidden rounded-3xl bg-mint-50 shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-mint-100">
+        {/* Close button */}
         <button
           type="button"
           onClick={onClose}
@@ -157,26 +63,45 @@ export function AddExpenseModal({
           <X className="h-4 w-4" />
         </button>
 
+        {/* Header */}
         <div className="p-6 pb-0">
-          <h2 className="text-center text-lg font-bold text-mint-700 mb-6">Add Expense</h2>
-          
-          {/* Progress Steps */}
+          <h2 className="text-center text-lg font-bold text-mint-700 mb-6">
+            {initialData ? "Edit Expense" : "Add Expense"}
+          </h2>
+
+          {/* Progress steps */}
           <div className="flex items-center justify-center gap-2 mb-6">
-            <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors", step >= 1 ? "bg-mint-600 text-white shadow-md" : "bg-mint-200 text-mint-500")}>1</div>
-            <div className={cn("h-1 w-8 rounded-full transition-colors", step >= 2 ? "bg-mint-600" : "bg-mint-200")} />
-            <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors", step >= 2 ? "bg-mint-600 text-white shadow-md" : "bg-mint-200 text-mint-500")}>2</div>
-            <div className={cn("h-1 w-8 rounded-full transition-colors", step >= 3 ? "bg-mint-600" : "bg-mint-200")} />
-            <div className={cn("h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors", step >= 3 ? "bg-mint-600 text-white shadow-md" : "bg-mint-200 text-mint-500")}>3</div>
+            {[1, 2, 3].map((s, i) => (
+              <Fragment key={s}>
+                <div
+                  className={cn(
+                    "h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors",
+                    step >= s ? "bg-mint-600 text-white shadow-md" : "bg-mint-200 text-mint-500",
+                  )}
+                >
+                  {s}
+                </div>
+                {i < 2 && (
+                  <div
+                    className={cn(
+                      "h-1 w-8 rounded-full transition-colors",
+                      step > s ? "bg-mint-600" : "bg-mint-200",
+                    )}
+                  />
+                )}
+              </Fragment>
+            ))}
           </div>
 
           <div className="bg-ink-900 text-white text-center py-2 rounded-t-xl font-bold uppercase tracking-widest text-sm">
             {currency}
           </div>
           <div className="bg-[#0074B7] text-white text-center py-2 rounded-b-xl text-xs font-semibold mb-6">
-            {step === 1 ? "Expense Info" : step === 2 ? "Split Method" : "Confirm"}
+            {STEP_LABELS[step]}
           </div>
         </div>
 
+        {/* Body */}
         <div className="px-6 pb-6 pt-2 bg-white rounded-t-3xl min-h-75 flex flex-col">
           {error && (
             <div className="mb-4 flex items-center gap-2 text-danger bg-danger/10 p-3 rounded-lg text-sm font-medium">
@@ -185,8 +110,14 @@ export function AddExpenseModal({
             </div>
           )}
 
+          {/* ---------------------------------------------------------------- */}
+          {/* Step 1 — Expense Info                                            */}
+          {/* ---------------------------------------------------------------- */}
           {step === 1 && (
-            <div className="flex flex-col gap-4 flex-1">
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleNextStep1(); }}
+              className="flex flex-col gap-4 flex-1"
+            >
               <Input
                 placeholder="Expense Name"
                 aria-label="Expense name"
@@ -202,19 +133,17 @@ export function AddExpenseModal({
                 onChange={(e) => setAmount(e.target.value)}
                 className="bg-mint-50 border-mint-200 font-bold"
               />
-              <div className="flex items-center gap-2">
-                <select
-                  value={paidBy}
-                  onChange={(e) => setPaidBy(e.target.value)}
-                  aria-label="Paid by"
-                  className="flex-1 h-12 rounded-xl border border-mint-200 bg-mint-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-mint-500/20"
-                >
-                  <option value="" disabled>Paid By</option>
-                  {members.map((member) => (
-                    <option key={member.id} value={member.id}>{member.name}</option>
-                  ))}
-                </select>
-              </div>
+              <select
+                value={paidBy}
+                onChange={(e) => setPaidBy(e.target.value)}
+                aria-label="Paid by"
+                className="h-12 w-full rounded-xl border border-mint-200 bg-mint-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-mint-500/20"
+              >
+                <option value="" disabled>Paid By</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>{member.name}</option>
+                ))}
+              </select>
               <Input
                 type="date"
                 aria-label="Expense date"
@@ -222,97 +151,194 @@ export function AddExpenseModal({
                 onChange={(e) => setDate(e.target.value)}
                 className="bg-mint-50 border-mint-200"
               />
-              
+              <textarea
+                placeholder="Note (optional)"
+                aria-label="Expense note"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                className="w-full rounded-xl border border-mint-200 bg-mint-50 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-mint-500/20"
+              />
               <div className="mt-auto pt-4 flex justify-end">
-                <Button onClick={handleNextStep1} className="w-full sm:w-auto bg-mint-600 hover:bg-mint-700">
+                <Button type="submit" className="w-full sm:w-auto bg-mint-600 hover:bg-mint-700">
                   Next
                 </Button>
               </div>
-            </div>
+            </form>
           )}
 
+          {/* ---------------------------------------------------------------- */}
+          {/* Step 2 — Split Method                                            */}
+          {/* ---------------------------------------------------------------- */}
           {step === 2 && (
-            <div className="flex flex-col gap-3 flex-1">
-              <div className="text-xs font-bold text-ink-500 uppercase px-2">Select who is involved</div>
-              <div className="flex-1 overflow-y-auto max-h-62.5 space-y-2 pr-2">
-                {members.map((member) => (
-                  <div key={member.id} className="flex items-center gap-3 p-3 rounded-xl border border-ink-100 bg-white">
-                    <input 
-                      type="checkbox" 
-                      checked={splits[member.id]?.selected ?? false}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setSplits((prev) => {
-                          const current = prev[member.id];
-                          return current ? { ...prev, [member.id]: { ...current, selected: checked } } : prev;
-                        });
-                      }}
-                      aria-label={`Include ${member.name} in split`}
-                      className="h-5 w-5 rounded border-ink-300 text-mint-600 focus:ring-mint-600"
-                    />
-                    <div className="flex items-center gap-2 flex-1">
-                      <div className="h-8 w-8 rounded-full bg-mint-100 text-mint-700 flex items-center justify-center text-xs font-bold">
-                        {member.name[0]}
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleNextStep2(); }}
+              className="flex flex-col gap-3 flex-1"
+            >
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-bold text-ink-500 uppercase">Split Type:</label>
+                <select
+                  value={splitType}
+                  onChange={(e) => setSplitType(e.target.value as SplitType)}
+                  aria-label="Split type"
+                  className="flex-1 h-9 rounded-lg border border-mint-200 bg-mint-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-mint-500/20 font-medium"
+                >
+                  <option value="equal">Split equally</option>
+                  <option value="percentage">Split by percentage</option>
+                  <option value="shares">Split by shares</option>
+                  <option value="exact">Split by exact amounts</option>
+                </select>
+              </div>
+
+              <div className="text-xs font-bold text-ink-500 uppercase px-2">
+                Select who is involved
+              </div>
+
+              <div className="flex-1 overflow-y-auto max-h-64 space-y-2 pr-2">
+                {members.map((member) => {
+                  const splitInput = memberSplitInputs[member.id];
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-ink-100 bg-white"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={splitInput?.selected ?? false}
+                        onChange={(e) =>
+                          updateMemberSplitInput(member.id, { selected: e.target.checked })
+                        }
+                        aria-label={`Include ${member.name} in split`}
+                        className="h-5 w-5 rounded border-ink-300 text-mint-600 focus:ring-mint-600"
+                      />
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="h-8 w-8 rounded-full bg-mint-100 text-mint-700 flex items-center justify-center text-xs font-bold">
+                          {member.name[0]}
+                        </div>
+                        <span className="font-semibold text-sm">{member.name}</span>
                       </div>
-                      <span className="font-semibold text-sm">{member.name}</span>
+
+                      {/* Equal — read-only */}
+                      {splitInput?.selected && splitType === "equal" && (
+                        <div className="flex items-center gap-2 w-32">
+                          <span className="text-sm font-medium text-ink-500 w-6">{currency}</span>
+                          <span className="flex-1 h-8 px-2 text-right text-sm font-medium text-ink-900">
+                            {parseFloat(splitInput.amount || "0").toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Exact — currency + input */}
+                      {splitInput?.selected && splitType === "exact" && (
+                        <div className="flex items-center gap-2 w-32">
+                          <span className="text-sm font-medium text-ink-500 w-6">{currency}</span>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            className="h-8 px-2 text-right text-sm flex-1"
+                            placeholder="0.00"
+                            value={splitInput.amount}
+                            onChange={(e) =>
+                              updateMemberSplitInput(member.id, { amount: e.target.value })
+                            }
+                            onBlur={(e) => {
+                              const formatted =
+                                e.target.value === "" ? "" : parseFloat(e.target.value).toFixed(2);
+                              updateMemberSplitInput(member.id, { amount: formatted });
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Percentage / Shares — unit-labelled input */}
+                      {splitInput?.selected && splitType !== "equal" && splitType !== "exact" && (
+                        <div className="flex items-center gap-2 w-32">
+                          <Input
+                            type="number"
+                            step={splitType === "percentage" ? "0.01" : "1"}
+                            className="h-8 px-2 text-right text-sm flex-1"
+                            placeholder="0"
+                            value={splitInput.amount}
+                            onChange={(e) =>
+                              updateMemberSplitInput(member.id, { amount: e.target.value })
+                            }
+                            onBlur={(e) => {
+                              const formatted =
+                                e.target.value === "" ? "" : parseFloat(e.target.value).toFixed(2);
+                              updateMemberSplitInput(member.id, { amount: formatted });
+                            }}
+                          />
+                          <span className="text-sm font-medium text-ink-500 w-10">
+                            {splitType === "percentage" ? "%" : "shares"}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    {splits[member.id]?.selected && (
-                      <div className="flex items-center gap-1 w-24">
-                        <span className="text-sm font-medium text-ink-500">{currency}</span>
-                        <Input 
-                          type="number"
-                          className="h-8 px-2 text-right text-sm"
-                          value={splits[member.id]?.amount ?? ""}
-                          onChange={(e) => {
-                            setSplits((prev) => {
-                              const current = prev[member.id];
-                              return current ? { ...prev, [member.id]: { ...current, amount: e.target.value } } : prev;
-                            });
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-              
+
               <div className="mt-auto pt-4 flex justify-between gap-3">
-                <Button variant="secondary" onClick={() => setStep(1)} className="flex-1">Back</Button>
-                <Button onClick={handleNextStep2} className="flex-1 bg-mint-600 hover:bg-mint-700">Next</Button>
+                <Button type="button" variant="secondary" onClick={() => goToStep(1)} className="flex-1">
+                  Back
+                </Button>
+                <Button type="submit" className="flex-1 bg-mint-600 hover:bg-mint-700">
+                  Next
+                </Button>
               </div>
-            </div>
+            </form>
           )}
 
+          {/* ---------------------------------------------------------------- */}
+          {/* Step 3 — Confirm                                                 */}
+          {/* ---------------------------------------------------------------- */}
           {step === 3 && (
-            <div className="flex flex-col gap-4 flex-1">
+            <form
+              onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+              className="flex flex-col gap-4 flex-1"
+            >
               <div className="bg-mint-50 p-4 rounded-xl flex items-center justify-between mb-2">
                 <div>
                   <div className="text-xs text-ink-500 font-semibold uppercase">Total Expense</div>
                   <div className="font-bold text-xl text-ink-900">{expenseName}</div>
                 </div>
-                <div className="text-2xl font-black text-mint-600">₱{totalAmount.toFixed(2)}</div>
+                <div className="text-2xl font-black text-mint-600">
+                  {currency} {totalAmount.toFixed(2)}
+                </div>
               </div>
+
+              {note.trim() && (
+                <p className="text-xs text-ink-500 italic px-1">{note.trim()}</p>
+              )}
 
               <div className="space-y-3">
                 <div className="text-xs font-bold text-ink-500 uppercase">Split Details</div>
-                {members.filter((member) => splits[member.id]?.selected && parseFloat(splits[member.id]!.amount) > 0).map((member) => (
-                  <div key={member.id} className="flex justify-between items-center text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="h-6 w-6 rounded-full bg-ink-100 flex items-center justify-center text-[10px] font-bold text-ink-600">
-                        {member.name[0]}
+                {members
+                  .filter((member) => (computedSplits[member.id] ?? 0) > 0)
+                  .map((member) => (
+                    <div key={member.id} className="flex justify-between items-center text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="h-6 w-6 rounded-full bg-ink-100 flex items-center justify-center text-[10px] font-bold text-ink-600">
+                          {member.name[0]}
+                        </div>
+                        <span className="font-medium text-ink-700">{member.name}</span>
                       </div>
-                      <span className="font-medium text-ink-700">{member.name}</span>
+                      <span className="font-bold text-ink-900">
+                        {currency} {computedSplits[member.id]!.toFixed(2)}
+                      </span>
                     </div>
-                    <span className="font-bold text-ink-900">{currency} {parseFloat(splits[member.id]!.amount).toFixed(2)}</span>
-                  </div>
-                ))}
+                  ))}
               </div>
 
               <div className="mt-auto pt-4 flex justify-between gap-3">
-                <Button variant="secondary" onClick={() => setStep(2)} className="flex-1">Back</Button>
-                <Button onClick={handleSubmit} className="flex-1 bg-ink-900 hover:bg-ink-800 text-white">Add Expense</Button>
+                <Button type="button" variant="secondary" onClick={() => goToStep(2)} className="flex-1">
+                  Back
+                </Button>
+                <Button type="submit" className="flex-1 bg-ink-900 hover:bg-ink-800 text-white">
+                  {initialData ? "Save Changes" : "Add Expense"}
+                </Button>
               </div>
-            </div>
+            </form>
           )}
         </div>
       </div>
