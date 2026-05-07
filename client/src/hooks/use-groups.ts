@@ -34,6 +34,7 @@ export interface GroupExpense {
   date: string;
   note?: string;
   splits: GroupExpenseSplit[];
+  memberDiscounts?: Array<{ memberId: string; type: "none" | "pwd" | "senior" }>;
   status: "pending" | "synced";
 }
 

@@ -1,4 +1,5 @@
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import type { GroupMember } from "@/hooks/use-groups";
@@ -11,6 +12,8 @@ interface GroupCardProps {
   balance: number; // positive means you lent, negative means you owe
   currency: string;
   members: GroupMember[];
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 export function GroupCard({
@@ -21,7 +24,10 @@ export function GroupCard({
   balance,
   currency,
   members,
+  onEdit,
+  onDelete,
 }: GroupCardProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isPositive = balance >= 0;
   const balanceText = isPositive ? "group owes you" : "you owe";
   const absBalance = Math.abs(balance);
@@ -42,7 +48,7 @@ export function GroupCard({
         filter: "drop-shadow(0 4px 4px rgba(255, 255, 255, 0.44))",
       }}
     >
-      <div className="flex items-start gap-3 overflow-hidden sm:gap-4 lg:items-center">
+      <div className="flex items-start gap-3 overflow-visible sm:gap-4 lg:items-center">
         <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[18px] bg-slate-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-[22px] lg:h-14 lg:w-14">
           {imageUrl ? (
             <img
@@ -99,9 +105,51 @@ export function GroupCard({
                 {formattedBalance}
               </p>
             </div>
-            <span className="shrink-0 rounded-full p-1 text-slate-800 transition-colors group-hover:bg-white/50">
-              <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
-            </span>
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                className="rounded-full p-1 text-slate-800 transition-colors group-hover:bg-white/50"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setIsMenuOpen((prev) => !prev);
+                }}
+              >
+                <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+              {isMenuOpen ? (
+                <div
+                  className="absolute right-0 top-full z-20 mt-2 w-36 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onEdit?.();
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onDelete?.();
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>

@@ -1,9 +1,9 @@
 import { Fragment } from "react";
-import { X, AlertCircle } from "lucide-react";
+import { X, AlertCircle, Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
-import { type AddExpenseModalProps, type SplitType } from "./types";
+import { type AddExpenseModalProps, type MemberSplitInput, type SplitType } from "./types";
 import { useExpenseForm } from "./use-expense-form";
 
 // =============================================================================
@@ -28,6 +28,7 @@ export function AddExpenseModal({
   members,
   currency,
 }: AddExpenseModalProps) {
+  const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit });
   const {
     step,
     expenseName, setExpenseName,
@@ -37,6 +38,11 @@ export function AddExpenseModal({
     note, setNote,
     splitType, setSplitType,
     memberSplitInputs, updateMemberSplitInput,
+    updateExactAmount,
+    updateMemberDiscountType,
+    toggleMemberLock,
+    toggleMemberSelected,
+    rebalancePercentageAllocations,
     totalAmount,
     computedSplits,
     error,
@@ -44,15 +50,19 @@ export function AddExpenseModal({
     handleNextStep2,
     handleSubmit,
     goToStep,
-  } = useExpenseForm({ isOpen, initialData, members, currency, onSubmit });
+  } = form;
+  const rebalanceExactAllocations: () => void =
+    "rebalanceExactAllocations" in form
+      ? (form as { rebalanceExactAllocations: () => void }).rebalanceExactAllocations
+      : () => undefined;
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
       <div className="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl bg-mint-50 shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-mint-100">
+      <div className="relative my-2 w-full max-w-md max-h-[95vh] overflow-y-auto rounded-3xl bg-mint-50 shadow-2xl animate-in fade-in zoom-in-95 duration-200 border border-mint-100 sm:my-0">
         {/* Close button */}
         <button
           type="button"
@@ -118,6 +128,9 @@ export function AddExpenseModal({
               onSubmit={(e) => { e.preventDefault(); handleNextStep1(); }}
               className="flex flex-col gap-4 flex-1"
             >
+              <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
+                Expense name
+              </label>
               <Input
                 placeholder="Expense Name"
                 aria-label="Expense name"
@@ -125,6 +138,9 @@ export function AddExpenseModal({
                 onChange={(e) => setExpenseName(e.target.value)}
                 className="bg-mint-50 border-mint-200"
               />
+              <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
+                Total amount
+              </label>
               <Input
                 type="number"
                 placeholder="Amount"
@@ -133,6 +149,9 @@ export function AddExpenseModal({
                 onChange={(e) => setAmount(e.target.value)}
                 className="bg-mint-50 border-mint-200 font-bold"
               />
+              <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
+                Paid by
+              </label>
               <select
                 value={paidBy}
                 onChange={(e) => setPaidBy(e.target.value)}
@@ -144,6 +163,9 @@ export function AddExpenseModal({
                   <option key={member.id} value={member.id}>{member.name}</option>
                 ))}
               </select>
+              <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
+                Date
+              </label>
               <Input
                 type="date"
                 aria-label="Expense date"
@@ -151,6 +173,9 @@ export function AddExpenseModal({
                 onChange={(e) => setDate(e.target.value)}
                 className="bg-mint-50 border-mint-200"
               />
+              <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
+                Note
+              </label>
               <textarea
                 placeholder="Note (optional)"
                 aria-label="Expense note"
@@ -176,7 +201,7 @@ export function AddExpenseModal({
               className="flex flex-col gap-3 flex-1"
             >
               <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-ink-500 uppercase">Split Type:</label>
+              <label className="text-xs font-bold text-ink-500 uppercase">Split method</label>
                 <select
                   value={splitType}
                   onChange={(e) => setSplitType(e.target.value as SplitType)}
@@ -191,12 +216,48 @@ export function AddExpenseModal({
               </div>
 
               <div className="text-xs font-bold text-ink-500 uppercase px-2">
-                Select who is involved
+                Member allocations
               </div>
+
+              {splitType === "exact" ? (
+                <div className="px-2 flex items-center justify-between gap-3">
+                  <p className="text-xs text-ink-500">
+                    Lock members, then press Balance Amounts to distribute remaining amount among unlocked members.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={rebalanceExactAllocations}
+                  >
+                    Balance Amounts
+                  </Button>
+                </div>
+              ) : null}
+              {splitType === "percentage" ? (
+                <div className="px-2 flex items-center justify-between gap-3">
+                  <p className="text-xs text-ink-500">
+                    Press Balance Percentages to normalize selected members to 100%.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={rebalancePercentageAllocations}
+                  >
+                    Balance Percentages
+                  </Button>
+                </div>
+              ) : null}
 
               <div className="flex-1 overflow-y-auto max-h-64 space-y-2 pr-2">
                 {members.map((member) => {
                   const splitInput = memberSplitInputs[member.id];
+                  const isLocked =
+                    (splitInput as MemberSplitInput & { locked?: boolean } | undefined)?.locked ??
+                    false;
                   return (
                     <div
                       key={member.id}
@@ -206,7 +267,7 @@ export function AddExpenseModal({
                         type="checkbox"
                         checked={splitInput?.selected ?? false}
                         onChange={(e) =>
-                          updateMemberSplitInput(member.id, { selected: e.target.checked })
+                          toggleMemberSelected(member.id, e.target.checked)
                         }
                         aria-label={`Include ${member.name} in split`}
                         className="h-5 w-5 rounded border-ink-300 text-mint-600 focus:ring-mint-600"
@@ -215,37 +276,84 @@ export function AddExpenseModal({
                         <div className="h-8 w-8 rounded-full bg-mint-100 text-mint-700 flex items-center justify-center text-xs font-bold">
                           {member.name[0]}
                         </div>
-                        <span className="font-semibold text-sm">{member.name}</span>
+                        <div className="flex min-w-0 flex-col">
+                          <span className="font-semibold text-sm">{member.name}</span>
+                          {splitInput?.selected ? (
+                            <select
+                              value={splitInput.discountType ?? "none"}
+                              onChange={(e) =>
+                                updateMemberDiscountType(
+                                  member.id,
+                                  e.target.value as "none" | "pwd" | "senior",
+                                )
+                              }
+                              className="mt-1 h-7 rounded border border-ink-200 bg-white px-2 text-[11px] text-ink-600"
+                              aria-label={`Discount type for ${member.name}`}
+                            >
+                              <option value="none">No discount</option>
+                              <option value="pwd">PWD (20%)</option>
+                              <option value="senior">Senior (20%)</option>
+                            </select>
+                          ) : null}
+                        </div>
                       </div>
 
                       {/* Equal — read-only */}
                       {splitInput?.selected && splitType === "equal" && (
                         <div className="flex items-center gap-2 w-32">
                           <span className="text-sm font-medium text-ink-500 w-6">{currency}</span>
-                          <span className="flex-1 h-8 px-2 text-right text-sm font-medium text-ink-900">
-                            {parseFloat(splitInput.amount || "0").toFixed(2)}
-                          </span>
+                          <div className="flex-1">
+                            <span className="block h-8 px-2 text-right text-sm font-medium text-ink-900">
+                              {parseFloat(splitInput.amount || "0").toFixed(2)}
+                            </span>
+                          </div>
                         </div>
                       )}
 
-                      {/* Exact — currency + input */}
-                      {splitInput?.selected && splitType === "exact" && (
-                        <div className="flex items-center gap-2 w-32">
-                          <span className="text-sm font-medium text-ink-500 w-6">{currency}</span>
+                      {/* Exact / Percentage with lock support */}
+                      {splitInput?.selected && (splitType === "exact" || splitType === "percentage") && (
+                        <div className="flex items-center gap-2 w-44">
+                          <button
+                            type="button"
+                            aria-label={isLocked ? `Unlock ${member.name}` : `Lock ${member.name}`}
+                            title={isLocked ? "Unlock amount" : "Lock amount"}
+                            className={cn(
+                              "h-9 w-9 rounded-lg border flex items-center justify-center",
+                              isLocked
+                                ? "border-mint-600 bg-mint-100 text-mint-700"
+                                : "border-ink-200 bg-white text-ink-500",
+                            )}
+                            onClick={() =>
+                              toggleMemberLock(member.id)
+                            }
+                          >
+                            {isLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                          </button>
+                          <span className="text-sm font-medium text-ink-500 w-6">
+                            {splitType === "exact" ? currency : "%"}
+                          </span>
                           <Input
                             type="number"
                             step="0.01"
-                            className="h-8 px-2 text-right text-sm flex-1"
+                            className="h-10 px-3 text-right text-base tabular-nums flex-1"
                             placeholder="0.00"
                             value={splitInput.amount}
+                            disabled={isLocked}
                             onChange={(e) => {
                               const value = e.target.value;
-                              // Format on blur, but update the input value immediately
+                              if (splitType === "exact") {
+                                updateExactAmount(member.id, value);
+                                return;
+                              }
                               updateMemberSplitInput(member.id, { amount: value });
                             }}
                             onBlur={(e) => {
                               const formatted =
                                 e.target.value === "" ? "" : parseFloat(e.target.value).toFixed(2);
+                              if (splitType === "exact") {
+                                updateExactAmount(member.id, formatted);
+                                return;
+                              }
                               updateMemberSplitInput(member.id, { amount: formatted });
                             }}
                           />
@@ -253,12 +361,12 @@ export function AddExpenseModal({
                       )}
 
                       {/* Percentage / Shares — unit-labelled input */}
-                      {splitInput?.selected && splitType !== "equal" && splitType !== "exact" && (
-                        <div className="flex items-center gap-2 w-32">
+                      {splitInput?.selected && splitType === "shares" && (
+                        <div className="flex items-center gap-2 w-44">
                           <Input
                             type="number"
-                            step={splitType === "percentage" ? "0.01" : "1"}
-                            className="h-8 px-2 text-right text-sm flex-1"
+                            step="1"
+                            className="h-10 px-3 text-right text-base tabular-nums flex-1"
                             placeholder="0"
                             value={splitInput.amount}
                             onChange={(e) => {
@@ -272,8 +380,8 @@ export function AddExpenseModal({
                               updateMemberSplitInput(member.id, { amount: formatted });
                             }}
                           />
-                          <span className="text-sm font-medium text-ink-500 w-10">
-                            {splitType === "percentage" ? "%" : "shares"}
+                          <span className="text-sm font-medium text-ink-500 w-12 text-right">
+                            shares
                           </span>
                         </div>
                       )}
@@ -325,7 +433,12 @@ export function AddExpenseModal({
                         <div className="h-6 w-6 rounded-full bg-ink-100 flex items-center justify-center text-[10px] font-bold text-ink-600">
                           {member.name[0]}
                         </div>
-                        <span className="font-medium text-ink-700">{member.name}</span>
+                        <span className="font-medium text-ink-700">
+                          {member.name}
+                          {(memberSplitInputs[member.id]?.discountType ?? "none") !== "none"
+                            ? ` (${memberSplitInputs[member.id]?.discountType?.toUpperCase()} 20%)`
+                            : ""}
+                        </span>
                       </div>
                       <span className="font-bold text-ink-900">
                         {currency} {computedSplits[member.id]!.toFixed(2)}
