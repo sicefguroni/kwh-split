@@ -9,6 +9,7 @@ import { AuthScreenFallback } from "@/components/layout/auth-screen-fallback";
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const SignupPage = lazy(() => import("@/pages/signup"));
+const OauthCallbackPage = lazy(() => import("@/pages/oauth-callback"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const GroupDetailsPage = lazy(() => import("@/pages/group-details"));
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
@@ -23,6 +24,7 @@ export function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/oauth/callback" element={<OauthCallbackPage />} />
             </Route>
 
             <Route element={<ProtectedRoute />}>

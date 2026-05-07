@@ -6,6 +6,20 @@ export interface UserRecord {
   name: string;
   password: string;
   is_active: boolean;
+  avatar_url: string | null;
+  email_verified: boolean | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export type AuthProvider = "google";
+
+export interface UserAuthProviderRecord {
+  auth_provider_id: number;
+  user_id: number;
+  provider: AuthProvider;
+  provider_user_id: string;
+  provider_email: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -16,6 +30,8 @@ const USER_COLUMNS = `
   email,
   password,
   is_active,
+  avatar_url,
+  email_verified,
   created_at,
   updated_at
 `;
@@ -41,17 +57,62 @@ export const userRepository = {
     email: string;
     name: string;
     passwordHash: string;
+    avatarUrl?: string | null;
+    emailVerified?: boolean | null;
   }): Promise<UserRecord> {
     const { rows } = await pool.query<UserRecord>(
-      `INSERT INTO users (email, name, password)
-       VALUES ($1, $2, $3)
+      `INSERT INTO users (email, name, password, avatar_url, email_verified)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING ${USER_COLUMNS}`,
-      [input.email, input.name, input.passwordHash],
+      [
+        input.email,
+        input.name,
+        input.passwordHash,
+        input.avatarUrl ?? null,
+        input.emailVerified ?? null,
+      ],
     );
     const created = rows[0];
     if (!created) {
       throw new Error("Failed to create user");
     }
     return created;
+  },
+
+  async findProviderIdentity(
+    provider: AuthProvider,
+    providerUserId: string,
+  ): Promise<UserAuthProviderRecord | null> {
+    const { rows } = await pool.query<UserAuthProviderRecord>(
+      `SELECT auth_provider_id, user_id, provider, provider_user_id, provider_email, created_at, updated_at
+       FROM user_auth_providers
+       WHERE provider = $1 AND provider_user_id = $2`,
+      [provider, providerUserId],
+    );
+    return rows[0] ?? null;
+  },
+
+  async attachProviderToUser(input: {
+    userId: number;
+    provider: AuthProvider;
+    providerUserId: string;
+    providerEmail?: string | null;
+  }): Promise<UserAuthProviderRecord> {
+    const { rows } = await pool.query<UserAuthProviderRecord>(
+      `INSERT INTO user_auth_providers (user_id, provider, provider_user_id, provider_email)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (provider, user_id)
+       DO UPDATE SET
+         provider_user_id = EXCLUDED.provider_user_id,
+         provider_email = EXCLUDED.provider_email,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING auth_provider_id, user_id, provider, provider_user_id, provider_email, created_at, updated_at`,
+      [input.userId, input.provider, input.providerUserId, input.providerEmail ?? null],
+    );
+    const linked = rows[0];
+    if (!linked) {
+      throw new Error("Failed to attach provider to user");
+    }
+    return linked;
   },
 };
