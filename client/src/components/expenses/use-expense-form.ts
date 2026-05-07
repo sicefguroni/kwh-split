@@ -8,9 +8,13 @@ import {
 import {
   applyRoundingCorrection,
   buildDefaultSplitInputs,
+  calculateDiscountAdjustedPreview,
   calculateSplits,
   generateExpenseId,
+  rebalancePercentageSplitInputs,
+  rebalanceExactSplitInputs,
   todayISODate,
+  validateExactSplitState,
 } from "./expense-utils";
 
 interface UseExpenseFormOptions {
@@ -40,9 +44,16 @@ interface UseExpenseFormReturn {
   setSplitType: (v: SplitType) => void;
   memberSplitInputs: Record<string, MemberSplitInput>;
   updateMemberSplitInput: (memberId: string, patch: Partial<MemberSplitInput>) => void;
+  updateExactAmount: (memberId: string, amount: string) => void;
+  updateMemberDiscountType: (memberId: string, discountType: "none" | "pwd" | "senior") => void;
+  toggleMemberLock: (memberId: string) => void;
+  toggleMemberSelected: (memberId: string, selected: boolean) => void;
+  rebalanceExactAllocations: (changedId?: string) => void;
+  rebalancePercentageAllocations: () => void;
   // Step 3 data
   totalAmount: number;
   computedSplits: Record<string, number>;
+  discountAdjustedPreview: Record<string, number>;
   // Feedback
   error: string;
   // Handlers
@@ -51,6 +62,8 @@ interface UseExpenseFormReturn {
   handleSubmit: () => void;
   goToStep: (s: 1 | 2 | 3) => void;
 }
+
+type LockableMemberSplitInput = MemberSplitInput & { locked?: boolean };
 
 export function useExpenseForm({
   isOpen,
@@ -73,6 +86,37 @@ export function useExpenseForm({
   const [error, setError] = useState("");
 
   const totalAmount = useMemo(() => parseFloat(amount) || 0, [amount]);
+  const discountAdjustedPreview = useMemo(() => {
+    const selectedMemberIds = Object.entries(memberSplitInputs)
+      .filter(([, split]) => split.selected)
+      .map(([memberId]) => memberId);
+    if (selectedMemberIds.length === 0 || totalAmount <= 0) return {};
+    const splitResult = calculateSplits(
+      splitType,
+      totalAmount,
+      selectedMemberIds,
+      memberSplitInputs,
+    );
+    if (!splitResult.ok) return {};
+    const corrected = applyRoundingCorrection(
+      splitResult.splits.map((entry) => ({
+        memberId: entry.memberId,
+        amount: entry.amount,
+      })),
+      totalAmount,
+    );
+    return calculateDiscountAdjustedPreview(
+      totalAmount,
+      corrected.map((entry) => ({ memberId: entry.memberId, amount: entry.amount })),
+      Object.entries(memberSplitInputs).reduce<Record<string, "none" | "pwd" | "senior">>(
+        (acc, [memberId, split]) => {
+          acc[memberId] = split.discountType ?? "none";
+          return acc;
+        },
+        {},
+      ),
+    );
+  }, [memberSplitInputs, splitType, totalAmount]);
 
   // ---------------------------------------------------------------------------
   // Reset / populate on open
@@ -99,9 +143,9 @@ export function useExpenseForm({
   useEffect(() => {
     setMemberSplitInputs((prev) => {
       const updated = { ...prev };
+      const selectedIds = Object.keys(updated).filter((id) => updated[id]?.selected);
 
       if (splitType === "equal") {
-        const selectedIds = Object.keys(updated).filter((id) => updated[id]?.selected);
         const splitAmount =
           selectedIds.length > 0 && totalAmount > 0
             ? (totalAmount / selectedIds.length).toFixed(2)
@@ -109,7 +153,7 @@ export function useExpenseForm({
         for (const id of selectedIds) {
           updated[id] = { ...updated[id]!, amount: splitAmount };
         }
-      } else {
+      } else if (splitType !== "exact") {
         for (const id in updated) {
           if (updated[id]?.selected) {
             updated[id] = { ...updated[id]!, amount: "" };
@@ -130,6 +174,139 @@ export function useExpenseForm({
       const current = prev[memberId];
       if (!current) return prev;
       return { ...prev, [memberId]: { ...current, ...patch } };
+    });
+  }
+
+  function rebalanceExactAllocations(changedId?: string) {
+    if (splitType !== "exact") return;
+    setMemberSplitInputs((prev) => {
+      const selectedIds = Object.entries(prev)
+        .filter(([, split]) => split.selected)
+        .map(([id]) => id);
+      const rebalanced = rebalanceExactSplitInputs(prev, selectedIds, totalAmount, changedId);
+      const validationError = validateExactSplitState(rebalanced, selectedIds, totalAmount);
+      setError(validationError ?? "");
+      return rebalanced;
+    });
+  }
+
+  function rebalancePercentageAllocations() {
+    if (splitType !== "percentage") return;
+    setMemberSplitInputs((prev) => {
+      const selectedIds = Object.entries(prev)
+        .filter(([, split]) => split.selected)
+        .map(([id]) => id);
+      return rebalancePercentageSplitInputs(prev, selectedIds);
+    });
+  }
+
+  function updateExactAmount(memberId: string, value: string) {
+    setMemberSplitInputs((prev) => {
+      const current = prev[memberId];
+      if (!current) return prev;
+      return { ...prev, [memberId]: { ...current, amount: value } };
+    });
+  }
+
+  function applyDiscountsToAllocationAmounts(
+    next: Record<string, MemberSplitInput>,
+  ): Record<string, MemberSplitInput> {
+    if (splitType !== "exact" && splitType !== "equal") return next;
+    const selectedMemberIds = Object.entries(next)
+      .filter(([, split]) => split.selected)
+      .map(([memberId]) => memberId);
+    if (selectedMemberIds.length === 0 || totalAmount <= 0) return next;
+
+    const splitResult = calculateSplits(splitType, totalAmount, selectedMemberIds, next);
+    if (!splitResult.ok) return next;
+
+    const corrected = applyRoundingCorrection(
+      splitResult.splits.map((entry) => ({
+        memberId: entry.memberId,
+        amount: entry.amount,
+      })),
+      totalAmount,
+    );
+
+    const adjusted = calculateDiscountAdjustedPreview(
+      totalAmount,
+      corrected.map((entry) => ({ memberId: entry.memberId, amount: entry.amount })),
+      Object.entries(next).reduce<Record<string, "none" | "pwd" | "senior">>((acc, [memberId, split]) => {
+        acc[memberId] = split.discountType ?? "none";
+        return acc;
+      }, {}),
+    );
+
+    for (const memberId of selectedMemberIds) {
+      if (adjusted[memberId] === undefined) continue;
+      next[memberId] = {
+        ...next[memberId]!,
+        amount: adjusted[memberId]!.toFixed(2),
+      };
+    }
+    return next;
+  }
+
+  function updateMemberDiscountType(
+    memberId: string,
+    discountType: "none" | "pwd" | "senior",
+  ) {
+    setMemberSplitInputs((prev) => {
+      const current = prev[memberId];
+      if (!current) return prev;
+      const next = {
+        ...prev,
+        [memberId]: {
+          ...current,
+          discountType,
+        },
+      };
+      return applyDiscountsToAllocationAmounts(next);
+    });
+  }
+
+  function toggleMemberLock(memberId: string) {
+    setMemberSplitInputs((prev) => {
+      const current = prev[memberId];
+      if (!current) return prev;
+      const next = {
+        ...prev,
+        [memberId]: {
+          ...current,
+          locked: !((current as LockableMemberSplitInput).locked ?? false),
+        } as LockableMemberSplitInput,
+      };
+      return next;
+    });
+  }
+
+  function toggleMemberSelected(memberId: string, selected: boolean) {
+    setMemberSplitInputs((prev) => {
+      const current = prev[memberId];
+      if (!current) return prev;
+      const next = {
+        ...prev,
+        [memberId]: {
+          ...current,
+          selected,
+        },
+      };
+      if (splitType === "equal") {
+        const selectedIds = Object.entries(next)
+          .filter(([, split]) => split.selected)
+          .map(([id]) => id);
+        const splitAmount =
+          selectedIds.length > 0 && totalAmount > 0
+            ? (totalAmount / selectedIds.length).toFixed(2)
+            : "";
+        for (const id of selectedIds) {
+          next[id] = { ...next[id]!, amount: splitAmount };
+        }
+        if (!selected) {
+          next[memberId] = { ...next[memberId]!, amount: "" };
+        }
+      }
+      return applyDiscountsToAllocationAmounts(next);
     });
   }
 
@@ -169,6 +346,14 @@ export function useExpenseForm({
     if (selectedMemberIds.length === 0) {
       setError("Please select at least one member.");
       return;
+    }
+
+    if (splitType === "exact") {
+      const validationError = validateExactSplitState(memberSplitInputs, selectedMemberIds, totalAmount);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
     }
 
     const result = calculateSplits(splitType, totalAmount, selectedMemberIds, memberSplitInputs);
@@ -218,6 +403,12 @@ export function useExpenseForm({
       splits: Object.entries(computedSplits)
         .filter(([, amt]) => amt > 0)
         .map(([memberId, amt]) => ({ memberId, amount: amt })),
+      memberDiscounts: Object.entries(memberSplitInputs)
+        .filter(([, split]) => split.selected)
+        .map(([memberId, split]) => ({
+          memberId,
+          type: split.discountType ?? "none",
+        })),
       status: initialData?.status ?? "pending",
     };
 
@@ -241,8 +432,15 @@ export function useExpenseForm({
     setSplitType,
     memberSplitInputs,
     updateMemberSplitInput,
+    updateExactAmount,
+    updateMemberDiscountType,
+    toggleMemberLock,
+    toggleMemberSelected,
+    rebalanceExactAllocations,
+    rebalancePercentageAllocations,
     totalAmount,
     computedSplits,
+    discountAdjustedPreview,
     error,
     handleNextStep1,
     handleNextStep2,

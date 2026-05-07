@@ -24,10 +24,15 @@ export function netForMember(expenses: GroupExpense[], memberId: string): number
 export function resolveViewerMemberId(
   group: GroupData,
   userFullName: string | undefined,
+  userId?: string,
 ): string | undefined {
+  if (userId) {
+    const byId = group.members.find((m) => m.id === userId);
+    if (byId) return byId.id;
+  }
   const first = userFullName?.trim().split(/\s+/)[0];
   if (first) {
-    const byName = group.members.find((m) => m.name === first);
+    const byName = group.members.find((m) => m.name.trim().toLowerCase() === first.toLowerCase());
     if (byName) return byName.id;
   }
   const admin = group.members.find((m) => m.isAdmin);
