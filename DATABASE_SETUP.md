@@ -4,7 +4,7 @@ This PostgreSQL database schema implements an expense-splitting application that
 
 ## Database Schema Overview
 
-The database consists of 7 main tables:
+The database consists of 8 main tables:
 
 1. **users** - User account information
 2. **groups** - Groups for organizing expenses
@@ -13,6 +13,7 @@ The database consists of 7 main tables:
 5. **receipt_items** - Line items from receipts (optional)
 6. **receipt_items_assignments** - Assignment of items to users
 7. **expense_splits** - How expenses are split among users
+8. **user_auth_providers** - Linked OAuth identities (Google)
 
 ## Setup Instructions
 
@@ -72,6 +73,17 @@ Stores user account information
 - `email` - Unique email address
 - `password` - Hashed password
 - `is_active` - Account status
+- `avatar_url` - Optional profile image URL
+- `email_verified` - Optional email verification status from provider
+- `created_at`, `updated_at` - Timestamps
+
+### User Auth Providers Table
+Stores social login identities linked to app users
+- `auth_provider_id` (Primary Key)
+- `user_id` (Foreign Key) - References users
+- `provider` - Provider name (`google`)
+- `provider_user_id` - Stable provider user identifier
+- `provider_email` - Email returned by provider
 - `created_at`, `updated_at` - Timestamps
 
 ### Groups Table
@@ -137,6 +149,7 @@ Records how each expense is split among users
   - `users.email` - Email must be unique
   - `group_members` - Each user can only have one membership per group
   - `receipt_items_assignments` - Each user can only be assigned to an item once
+  - `user_auth_providers` - One identity per provider account and one account per provider per user
 - **Default Values**: Timestamps automatically set to current time
 
 ## Useful Queries

@@ -5,6 +5,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   WEB_ORIGIN: z.string().url().default("http://localhost:5173"),
+  OAUTH_CALLBACK_BASE_URL: z.string().url().optional(),
 
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(60 * 15),
@@ -25,6 +26,9 @@ const EnvSchema = z.object({
 
   /** When an offline sync INSERT omits `group_id`, use this group (user must be a member). */
   OFFLINE_SYNC_DEFAULT_GROUP_ID: z.coerce.number().int().positive().optional(),
+
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -44,5 +48,7 @@ const databaseUrl =
 export const env = Object.freeze({
   ...config,
   DATABASE_URL: databaseUrl,
+  OAUTH_CALLBACK_BASE_URL:
+    config.OAUTH_CALLBACK_BASE_URL ?? `http://localhost:${config.PORT}`,
 });
 export type Env = typeof env;
