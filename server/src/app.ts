@@ -9,6 +9,9 @@ import {
   listSyncedExpenses,
   offlineSyncRouter,
 } from "./modules/offline-sync/offline-sync.routes.js";
+import { groupsRouter } from "./modules/groups/groups.routes.js";
+import { expensesRouter } from "./modules/expenses/expenses.routes.js";
+import { settlementsRouter } from "./modules/settlements/settlements.routes.js";
 import { requireAuth } from "./middleware/require-auth.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 
@@ -45,6 +48,9 @@ export function createApp(): Express {
   app.get("/api/expenses", requireAuth, listSyncedExpenses);
 
   app.use("/api/auth", authRouter);
+  app.use("/api/groups", groupsRouter);
+  app.use("/api/expenses", expensesRouter);
+  app.use("/api/settlements", settlementsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
