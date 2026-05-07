@@ -12,6 +12,7 @@ import {
   SignupFormSchema,
   type SignupFormValues,
 } from "@/features/auth/schemas";
+import { SocialAuthButtons } from "./social-auth-buttons";
 
 export function SignupForm() {
   const navigate = useNavigate();
@@ -50,6 +51,14 @@ export function SignupForm() {
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      <SocialAuthButtons />
+
+      <div className="flex items-center gap-3 text-xs text-ink-400">
+        <span className="h-px flex-1 bg-ink-200" />
+        <span>or</span>
+        <span className="h-px flex-1 bg-ink-200" />
+      </div>
+
       <Field label="Name" error={errors.name?.message}>
         <Input
           type="text"

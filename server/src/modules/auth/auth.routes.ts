@@ -19,5 +19,7 @@ export const authRouter: Router = Router();
 
 authRouter.post("/signup", writeLimiter, validateBody(SignupSchema), authController.signup);
 authRouter.post("/login", writeLimiter, validateBody(LoginSchema), authController.login);
+authRouter.get("/google/start", authController.oauthGoogleStart);
+authRouter.get("/google/callback", authController.oauthGoogleCallback);
 authRouter.post("/logout", authController.logout);
 authRouter.get("/me", requireAuth, authController.me);
