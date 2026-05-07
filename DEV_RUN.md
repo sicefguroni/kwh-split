@@ -41,6 +41,8 @@ Create (or update) `server/.env`. Minimal values:
 - `DATABASE_URL` — connection string for Postgres (e.g. `postgres://postgres:password@localhost:5432/kwh_split`)
 - `PORT` — API port (default 4000)
 - `WEB_ORIGIN` — client origin (default `http://localhost:5173`)
+- `OAUTH_CALLBACK_BASE_URL` — backend public origin for OAuth callbacks (default `http://localhost:4000`)
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 
 Example `.env` (do NOT commit):
 
@@ -49,6 +51,9 @@ JWT_SECRET=<your-generated-secret>
 DATABASE_URL=postgres://postgres:your_db_password@localhost:5432/kwh_split
 PORT=4000
 WEB_ORIGIN=http://localhost:5173
+OAUTH_CALLBACK_BASE_URL=http://localhost:4000
+GOOGLE_CLIENT_ID=<from-google-console>
+GOOGLE_CLIENT_SECRET=<from-google-console>
 ```
 
 Generate a secure secret (Node):
@@ -58,6 +63,11 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
 ```
 
 Write that into `server/.env` or set `JWT_SECRET` in the shell before starting the server.
+
+### OAuth provider setup
+
+- Google Console redirect URI: `http://localhost:4000/api/auth/google/callback`
+- In local development, keep `WEB_ORIGIN=http://localhost:5173` and `OAUTH_CALLBACK_BASE_URL=http://localhost:4000`.
 
 ## 4) Run DB migrations (optional)
 

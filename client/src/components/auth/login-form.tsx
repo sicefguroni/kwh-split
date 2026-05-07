@@ -12,6 +12,7 @@ import {
   LoginFormSchema,
   type LoginFormValues,
 } from "@/features/auth/schemas";
+import { SocialAuthButtons } from "./social-auth-buttons";
 
 interface LocationState {
   from?: { pathname?: string };
@@ -21,6 +22,7 @@ export function LoginForm() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as LocationState | null)?.from?.pathname ?? "/dashboard";
+  const oauthError = new URLSearchParams(location.search).get("oauthError");
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -52,6 +54,14 @@ export function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
+      <SocialAuthButtons />
+
+      <div className="flex items-center gap-3 text-xs text-ink-400">
+        <span className="h-px flex-1 bg-ink-200" />
+        <span>or</span>
+        <span className="h-px flex-1 bg-ink-200" />
+      </div>
+
       <Field label="Email" error={errors.email?.message}>
         <Input
           type="email"
@@ -85,9 +95,9 @@ export function LoginForm() {
         </button>
       </div>
 
-      {submitError ? (
+      {submitError || oauthError ? (
         <p role="alert" className="text-sm text-danger">
-          {submitError}
+          {submitError ?? oauthError}
         </p>
       ) : null}
 
