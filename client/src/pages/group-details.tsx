@@ -5,6 +5,7 @@ import { ArrowLeft, Edit3, MoreVertical, Plus, Trash2, WifiOff } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { AddExpenseModal } from "@/components/expenses/add-expense-modal";
 import { EditGroupModal } from "@/components/dashboard/add-group-modal";
+import { InviteModal } from "@/components/dashboard/invite-modal";
 import { GroupAvatar, GroupCoverBackground } from "@/components/dashboard/group-media";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
 import { type GroupData, type GroupExpense } from "@/hooks/use-groups";
@@ -46,14 +47,14 @@ export default function GroupDetailsPage() {
     () =>
       apiGroup
         ? {
-            id: apiGroup.id,
-            name: apiGroup.name,
-            description: apiGroup.description ?? "",
-            currency: apiGroup.currency,
-            members: apiGroup.members,
-            balance: 0,
-            createdAt: apiGroup.createdAt,
-          }
+          id: apiGroup.id,
+          name: apiGroup.name,
+          description: apiGroup.description ?? "",
+          currency: apiGroup.currency,
+          members: apiGroup.members,
+          balance: 0,
+          createdAt: apiGroup.createdAt,
+        }
         : undefined,
     [apiGroup],
   );
@@ -82,6 +83,7 @@ export default function GroupDetailsPage() {
   const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "members">("expenses");
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isEditGroupOpen, setIsEditGroupOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<GroupExpense | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -176,9 +178,9 @@ export default function GroupDetailsPage() {
       const top = openUpward
         ? Math.max(EXPENSE_MENU_MARGIN, rect.top - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_OFFSET)
         : Math.min(
-            rect.bottom + EXPENSE_MENU_OFFSET,
-            window.innerHeight - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_MARGIN,
-          );
+          rect.bottom + EXPENSE_MENU_OFFSET,
+          window.innerHeight - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_MARGIN,
+        );
       const left = Math.min(
         Math.max(EXPENSE_MENU_MARGIN, rect.right - EXPENSE_MENU_WIDTH),
         window.innerWidth - EXPENSE_MENU_WIDTH - EXPENSE_MENU_MARGIN,
@@ -349,15 +351,15 @@ export default function GroupDetailsPage() {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2">
-                {!isOnline ? (
-                  <span
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15"
-                    title="Offline"
-                    aria-label="Offline"
-                  >
-                    <WifiOff className="h-4 w-4" aria-hidden />
-                  </span>
-                ) : null}
+              {!isOnline ? (
+                <span
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15"
+                  title="Offline"
+                  aria-label="Offline"
+                >
+                  <WifiOff className="h-4 w-4" aria-hidden />
+                </span>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setIsEditGroupOpen(true)}
@@ -618,31 +620,31 @@ export default function GroupDetailsPage() {
 
         {openMenuExpense && menuPosition && typeof document !== "undefined"
           ? createPortal(
-              <div
-                ref={menuRef}
-                className="fixed z-30 min-w-[152px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
-                style={{ top: menuPosition.top, left: menuPosition.left }}
-                role="menu"
+            <div
+              ref={menuRef}
+              className="fixed z-30 min-w-[152px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
+              style={{ top: menuPosition.top, left: menuPosition.left }}
+              role="menu"
+            >
+              <button
+                type="button"
+                onClick={() => handleOpenEditExpense(openMenuExpense)}
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                role="menuitem"
               >
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditExpense(openMenuExpense)}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                  role="menuitem"
-                >
-                  <Edit3 className="h-3.5 w-3.5" /> Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteExpense(openMenuExpense.id)}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                  role="menuitem"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </button>
-              </div>,
-              document.body,
-            )
+                <Edit3 className="h-3.5 w-3.5" /> Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteExpense(openMenuExpense.id)}
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                role="menuitem"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            </div>,
+            document.body,
+          )
           : null}
 
         {/* BALANCES */}
@@ -777,8 +779,21 @@ export default function GroupDetailsPage() {
         {/* MEMBERS */}
         {activeTab === "members" && (
           <div className="">
+            {/* Members header with invite button */}
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Members ({group.members.length})</h3>
+              <Button
+                onClick={() => setIsInviteModalOpen(true)}
+                className="rounded-full"
+                size="sm"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Invite
+              </Button>
+            </div>
+
             {group.members.map((member) => (
-              <div key={member.id} className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+              <div key={member.id} className="mb-3 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-200 text-sm font-bold text-slate-700">
                     {member.name.charAt(0)}
@@ -818,6 +833,13 @@ export default function GroupDetailsPage() {
         onClose={() => setIsEditGroupOpen(false)}
         onSubmit={handleSaveGroup}
         initialData={group}
+      />
+
+      <InviteModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        groupId={groupId}
+        groupName={group.name}
       />
     </div>
   );
