@@ -1,5 +1,6 @@
 import { badRequest } from "../../utils/errors.js";
 import { assertGroupMember } from "../common/authorization.js";
+import { broadcastGroupChange } from "../realtime/realtime-hub.js";
 import { settlementsRepository } from "./settlements.repository.js";
 import type { MarkPaidInput } from "./settlements.schemas.js";
 
@@ -45,6 +46,7 @@ export const settlementsService = {
       throw badRequest("fromUserId and toUserId must be different", "invalid_settlement");
     }
     await settlementsRepository.markPaidAndSettleSplits(groupId, input);
+    broadcastGroupChange(groupId);
   },
 
   async history(groupId: number, requesterId: number): Promise<SettlementHistoryEntry[]> {

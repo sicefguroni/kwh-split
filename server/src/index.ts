@@ -1,6 +1,8 @@
+import { createServer } from "node:http";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { pool } from "./db/pool.js";
+import { attachRealtimeServer, shutdownRealtimeServer } from "./modules/realtime/realtime-hub.js";
 
 async function start() {
   try {
@@ -11,12 +13,15 @@ async function start() {
   }
 
   const app = createApp();
-  const server = app.listen(env.PORT, () => {
+  const server = createServer(app);
+  attachRealtimeServer(server);
+  server.listen(env.PORT, () => {
     console.log(`[api] listening on http://localhost:${env.PORT}`);
   });
 
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`[api] received ${signal}, shutting down...`);
+    shutdownRealtimeServer();
     server.close(() => {
       pool
         .end()
