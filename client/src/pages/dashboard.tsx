@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { AddGroupModal } from "@/components/dashboard/add-group-modal";
+import { AddGroupModal, type GroupFormSubmission } from "@/components/dashboard/add-group-modal";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { EmptyGroupsState } from "@/components/dashboard/empty-groups-state";
 import { GroupCard } from "@/components/dashboard/group-card";
@@ -10,11 +10,11 @@ import { Button } from "@/components/ui/button";
 import { useCurrentUser, useLogoutMutation } from "@/features/auth/use-auth";
 import { expensesApi } from "@/features/expenses/api";
 import type { ApiExpense } from "@/features/expenses/types";
+import { groupsApi } from "@/features/groups/api";
 import {
   useCreateGroupMutation,
   useDeleteGroupMutation,
   useGroupsQuery,
-  useJoinGroupMutation,
   useUpdateGroupMutation,
 } from "@/features/groups/use-groups";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
@@ -31,17 +31,37 @@ function formatMoney(amount: number): string {
   });
 }
 
+function describeInviteOutcome(
+  baseMessage: string,
+  inviteResult: Awaited<ReturnType<typeof groupsApi.createInvitations>> | null,
+): string {
+  if (!inviteResult) {
+    return baseMessage;
+  }
+  if (inviteResult.created.length === 0 && inviteResult.skipped.length > 0) {
+    return `${baseMessage} No invitations were sent: ${inviteResult.skipped[0]?.reason ?? "all recipients were skipped."}`;
+  }
+  if (inviteResult.created.length > 0 && inviteResult.skipped.length > 0) {
+    return `${baseMessage} ${inviteResult.created.length} invite${inviteResult.created.length === 1 ? "" : "s"} sent, ${inviteResult.skipped.length} skipped.`;
+  }
+  if (inviteResult.created.length > 0) {
+    return `${baseMessage} ${inviteResult.created.length} invite${inviteResult.created.length === 1 ? "" : "s"} sent.`;
+  }
+  return baseMessage;
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: user } = useCurrentUser();
   const logout = useLogoutMutation();
   const createGroupMutation = useCreateGroupMutation();
   const updateGroupMutation = useUpdateGroupMutation();
   const deleteGroupMutation = useDeleteGroupMutation();
-  const joinGroupMutation = useJoinGroupMutation();
   const { data: apiGroups = [] } = useGroupsQuery();
   const isOnline = useOnlineStatus();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [editingGroup, setEditingGroup] = useState<GroupData | null>(null);
   const [actionMessage, setActionMessage] = useState<{
     kind: "success" | "error";
@@ -55,9 +75,11 @@ export default function DashboardPage() {
         name: group.name,
         description: group.description ?? "",
         currency: group.currency,
+        imageUrl: group.imageUrl ?? undefined,
         members: group.members,
         balance: 0,
         createdAt: group.createdAt,
+        role: group.role,
       })),
     [apiGroups],
   );
@@ -117,7 +139,8 @@ export default function DashboardPage() {
     navigate("/login", { replace: true });
   };
 
-  const handleSaveGroup = async (group: GroupData): Promise<void> => {
+  const handleSaveGroup = async (group: GroupFormSubmission): Promise<void> => {
+    setIsSavingGroup(true);
     try {
       if (editingGroup) {
         const updatedGroup = await updateGroupMutation.mutateAsync({
@@ -125,54 +148,70 @@ export default function DashboardPage() {
           name: group.name,
           description: group.description,
           currency: group.currency,
+          imageUrl: group.imageUrl,
         });
 
-        const existingNames = new Set(
-          editingGroup.members.map((member) => member.name.trim().toLowerCase()),
-        );
-        const addedMembers = group.members.filter(
-          (member) => !member.isAdmin && !existingNames.has(member.name.trim().toLowerCase()),
-        );
+        const inviteResult =
+          group.inviteRecipients.length > 0
+            ? await groupsApi.createInvitations(updatedGroup.id, {
+                recipients: group.inviteRecipients.map((recipient) =>
+                  recipient.userId
+                    ? { userId: Number(recipient.userId) }
+                    : { email: recipient.email },
+                ),
+              })
+            : null;
 
-        for (const member of addedMembers) {
-          await joinGroupMutation.mutateAsync({
-            id: updatedGroup.id,
-            userName: member.name.trim(),
-          });
+        if (inviteResult) {
+          await queryClient.invalidateQueries({ queryKey: ["group-invitations", updatedGroup.id] });
+          await queryClient.invalidateQueries({ queryKey: ["incoming-invitations"] });
         }
 
-        setActionMessage({ kind: "success", text: "Group updated." });
+        setActionMessage({
+          kind: "success",
+          text: describeInviteOutcome("Group updated.", inviteResult),
+        });
       } else {
         const createdGroup = await createGroupMutation.mutateAsync({
           name: group.name,
           description: group.description,
           currency: group.currency,
+          imageUrl: group.imageUrl,
         });
 
-        const membersToAdd = group.members.filter((member) => !member.isAdmin);
-        for (const member of membersToAdd) {
-          await joinGroupMutation.mutateAsync({
-            id: createdGroup.id,
-            userName: member.name.trim(),
-          });
+        const inviteResult =
+          group.inviteRecipients.length > 0
+            ? await groupsApi.createInvitations(createdGroup.id, {
+                recipients: group.inviteRecipients.map((recipient) =>
+                  recipient.userId
+                    ? { userId: Number(recipient.userId) }
+                    : { email: recipient.email },
+                ),
+              })
+            : null;
+
+        if (inviteResult) {
+          await queryClient.invalidateQueries({ queryKey: ["group-invitations", createdGroup.id] });
+          await queryClient.invalidateQueries({ queryKey: ["incoming-invitations"] });
         }
 
-        setActionMessage({ kind: "success", text: "Group created." });
+        setActionMessage({
+          kind: "success",
+          text: describeInviteOutcome("Group created.", inviteResult),
+        });
       }
 
       setEditingGroup(null);
       setIsAddModalOpen(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
-        setActionMessage({ kind: "error", text: "Session expired. Please log in again." });
         navigate("/login", { replace: true });
-        return;
+        throw error;
       }
 
-      setActionMessage({
-        kind: "error",
-        text: error instanceof ApiError ? error.message : "Unable to save group.",
-      });
+      throw error;
+    } finally {
+      setIsSavingGroup(false);
     }
   };
 
@@ -280,10 +319,18 @@ export default function DashboardPage() {
                 <GroupCard
                   key={group.id}
                   {...group}
-                  onEdit={() => handleOpenEditGroup(group)}
-                  onDelete={() => {
-                    void handleDeleteGroup(group);
-                  }}
+                  onEdit={
+                    group.role === "admin"
+                      ? () => handleOpenEditGroup(group)
+                      : undefined
+                  }
+                  onDelete={
+                    group.role === "admin"
+                      ? () => {
+                          void handleDeleteGroup(group);
+                        }
+                      : undefined
+                  }
                 />
               ))
             )}
@@ -298,9 +345,10 @@ export default function DashboardPage() {
           setIsAddModalOpen(false);
         }}
         onSubmit={(group) => {
-          void handleSaveGroup(group);
+          return handleSaveGroup(group);
         }}
         {...(editingGroup ? { initialData: editingGroup } : {})}
+        isSubmitting={isSavingGroup}
       />
     </div>
   );
