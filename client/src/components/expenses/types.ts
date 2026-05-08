@@ -22,4 +22,5 @@ export interface AddExpenseModalProps {
   initialData: GroupExpense | undefined;
   members: GroupMember[];
   currency: string;
+  groupName: string;
 }
