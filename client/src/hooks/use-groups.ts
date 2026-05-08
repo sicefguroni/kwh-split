@@ -17,6 +17,7 @@ const normalizeGroupCurrency = (group: GroupData): GroupData => {
 export interface GroupMember {
   id: string;
   name: string;
+  email?: string;
   isAdmin: boolean;
 }
 
@@ -43,10 +44,11 @@ export interface GroupData {
   name: string;
   description: string;
   currency: string;
-  imageUrl?: string;
+  imageUrl?: string | undefined;
   members: GroupMember[];
   balance: number;
   createdAt: string;
+  role?: string | undefined;
 }
 
 export const DEFAULT_GROUPS: GroupData[] = [

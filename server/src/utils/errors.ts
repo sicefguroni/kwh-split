@@ -18,3 +18,6 @@ export const unauthorized = (message = "Unauthorized"): HttpError =>
 
 export const conflict = (message: string, code = "conflict"): HttpError =>
   new HttpError(409, code, message);
+
+export const tooManyRequests = (message: string, code = "too_many_requests"): HttpError =>
+  new HttpError(429, code, message);

@@ -4,16 +4,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { authApi } from "@/features/auth/api";
 import { useCurrentUser } from "@/features/auth/use-auth";
 import { queryClient } from "@/lib/query-client";
-import {
-  getLoginRedirectForOauthError,
-  getOauthErrorMessage,
-} from "./oauth-callback.utils";
+import { getLoginRedirectForOauthError, getOauthErrorMessage } from "./oauth-callback.utils";
 
 export default function OauthCallbackPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const status = params.get("status");
   const code = params.get("code");
+  const redirectPath = params.get("redirect") || "/dashboard";
   const { data: currentUser } = useCurrentUser();
 
   const errorMessage = useMemo(() => getOauthErrorMessage(code), [code]);
@@ -30,13 +28,13 @@ export default function OauthCallbackPage() {
           }
         }
         if (isMounted) {
-          navigate("/dashboard", { replace: true });
+          navigate(redirectPath, { replace: true });
         }
         return;
       }
 
       if (isMounted) {
-        navigate(getLoginRedirectForOauthError(errorMessage), { replace: true });
+        navigate(getLoginRedirectForOauthError(errorMessage, redirectPath), { replace: true });
       }
     };
 
@@ -45,7 +43,7 @@ export default function OauthCallbackPage() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser, errorMessage, navigate, status]);
+  }, [currentUser, errorMessage, navigate, redirectPath, status]);
 
   return (
     <main className="flex min-h-[100svh] items-center justify-center px-4">

@@ -9,12 +9,12 @@ interface GroupCardProps {
   id: string;
   name: string;
   description?: string;
-  imageUrl?: string;
+  imageUrl?: string | undefined;
   balance: number;
   currency: string;
   members: GroupMember[];
-  onEdit?: () => void;
-  onDelete?: () => void;
+  onEdit?: (() => void) | undefined;
+  onDelete?: (() => void) | undefined;
 }
 
 export function GroupCard({
