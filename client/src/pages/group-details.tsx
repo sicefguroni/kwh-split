@@ -1,9 +1,11 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Edit3, MoreVertical, Plus, Trash2, Wifi, WifiOff } from "lucide-react";
+import { ArrowLeft, Edit3, MoreVertical, Plus, Trash2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AddExpenseModal } from "@/components/expenses/add-expense-modal";
-import { AddGroupModal } from "@/components/dashboard/add-group-modal";
+import { EditGroupModal } from "@/components/dashboard/add-group-modal";
+import { GroupAvatar, GroupCoverBackground } from "@/components/dashboard/group-media";
 import { usePersistentState, useOnlineStatus } from "@/hooks/use-persistent-state";
 import { type GroupData, type GroupExpense, useGroupsState } from "@/hooks/use-groups";
 import { useCurrentUser } from "@/features/auth/use-auth";
@@ -14,6 +16,11 @@ import {
   totalSpent,
 } from "@/lib/group-money";
 import { cn } from "@/lib/cn";
+
+const EXPENSE_MENU_WIDTH = 152;
+const EXPENSE_MENU_HEIGHT = 96;
+const EXPENSE_MENU_OFFSET = 8;
+const EXPENSE_MENU_MARGIN = 12;
 
 export default function GroupDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +33,11 @@ export default function GroupDetailsPage() {
   const [isEditGroupOpen, setIsEditGroupOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<GroupExpense | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [swipedId, setSwipedId] = useState<string | null>(null);
+  const touchStartX = useRef<number>(0);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const isOnline = useOnlineStatus();
   const { data: user } = useCurrentUser();
 
@@ -87,6 +99,67 @@ export default function GroupDetailsPage() {
     });
   }, [expenses, group, user?.name, setGroups]);
 
+  useEffect(() => {
+    if (!openMenuId) {
+      setMenuPosition(null);
+      return;
+    }
+
+    const updateMenuPosition = () => {
+      const trigger = menuButtonRefs.current[openMenuId];
+      if (!trigger) {
+        return;
+      }
+
+      const rect = trigger.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom - EXPENSE_MENU_MARGIN;
+      const openUpward =
+        spaceBelow < EXPENSE_MENU_HEIGHT && rect.top > EXPENSE_MENU_HEIGHT + EXPENSE_MENU_MARGIN;
+      const top = openUpward
+        ? Math.max(EXPENSE_MENU_MARGIN, rect.top - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_OFFSET)
+        : Math.min(
+            rect.bottom + EXPENSE_MENU_OFFSET,
+            window.innerHeight - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_MARGIN,
+          );
+      const left = Math.min(
+        Math.max(EXPENSE_MENU_MARGIN, rect.right - EXPENSE_MENU_WIDTH),
+        window.innerWidth - EXPENSE_MENU_WIDTH - EXPENSE_MENU_MARGIN,
+      );
+
+      setMenuPosition({ top, left });
+    };
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      const trigger = menuButtonRefs.current[openMenuId];
+      if (target && !menuRef.current?.contains(target) && !trigger?.contains(target)) {
+        setOpenMenuId(null);
+      }
+    };
+
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenMenuId(null);
+      }
+    };
+
+    updateMenuPosition();
+
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [openMenuId]);
+
   if (!group) {
     return (
       <div className="min-h-screen bg-white p-6">
@@ -131,14 +204,39 @@ export default function GroupDetailsPage() {
   const handleDeleteExpense = (expenseId: string) => {
     setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
     setOpenMenuId(null);
+    setSwipedId(null);
   };
 
-  const onlineLabel = isOnline ? "Online" : "Offline";
+  const toggleExpenseMenu = (expenseId: string) => {
+    setOpenMenuId((currentId) => (currentId === expenseId ? null : expenseId));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent, expenseId: string) => {
+    if (e.touches.length > 0) touchStartX.current = e.touches[0]!.clientX;
+    if (swipedId && swipedId !== expenseId) setSwipedId(null);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent, expenseId: string) => {
+    if (e.changedTouches.length === 0) return;
+    const dx = touchStartX.current - e.changedTouches[0]!.clientX;
+    if (dx > 48) setSwipedId(expenseId);
+    else if (dx < -24) setSwipedId(null);
+  };
+
+  const openMenuExpense = openMenuId
+    ? expenses.find((expense) => expense.id === openMenuId) ?? null
+    : null;
 
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <div className="relative overflow-hidden bg-linear-to-br from-slate-900 via-slate-800 to-sky-700 text-white">
+      <div className="relative overflow-hidden text-white">
+        <GroupCoverBackground
+          name={group.name}
+          imageUrl={group.imageUrl}
+          className="absolute inset-0"
+          overlayClassName="bg-linear-to-br from-slate-950/92 via-slate-900/75 to-sky-900/65"
+        />
         <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_35%)]" />
 
         <div className="relative mx-auto max-w-3xl px-4 pt-6 pb-0">
@@ -153,13 +251,15 @@ export default function GroupDetailsPage() {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2">
-              <span
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15"
-                title={onlineLabel}
-                aria-label={onlineLabel}
-              >
-                {isOnline ? <Wifi className="h-4 w-4" aria-hidden /> : <WifiOff className="h-4 w-4" aria-hidden />}
-              </span>
+                {!isOnline ? (
+                  <span
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15"
+                    title="Offline"
+                    aria-label="Offline"
+                  >
+                    <WifiOff className="h-4 w-4" aria-hidden />
+                  </span>
+                ) : null}
               <button
                 type="button"
                 onClick={() => setIsEditGroupOpen(true)}
@@ -171,36 +271,55 @@ export default function GroupDetailsPage() {
             </div>
           </div>
 
-          {/* Group identity row */}
-          <div className="mt-5 flex items-center gap-4">
-            <img
-              src={group.imageUrl ?? "https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=1200&q=80"}
-              alt={group.name}
-              className="h-16 w-16 flex-shrink-0 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
-            />
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-2xl font-bold uppercase tracking-wide text-white">
-                {group.name}
-              </h1>
-              <p className="mt-0.5 text-xs text-slate-300/80">Group Total</p>
-              <p className="text-xl font-semibold text-white">
-                {group.currency}
-                {totalSpentValue.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </p>
+          {/* Group identity — mobile: large image + stacked text + full-width button */}
+          {/* desktop: compact inline row */}
+          <div className="mt-5">
+            {/* Shared image + text row */}
+            <div className="flex items-center gap-4">
+              <GroupAvatar
+                name={group.name}
+                imageUrl={group.imageUrl}
+                className="h-24 w-24 flex-shrink-0 rounded-3xl shadow-lg ring-2 ring-white/20 sm:h-16 sm:w-16 sm:rounded-2xl"
+                fallbackClassName="text-lg sm:text-sm"
+              />
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl lg:2xl font-bold uppercase tracking-wide text-white sm:truncate ">
+                  {group.name}
+                </h1>
+                <p className="mt-1 text-sm text-slate-300/80 sm:mt-0.5 sm:text-xs">Group Total</p>
+                <p className="text-xl lg:2xl font-semibold text-white">
+                  {group.currency}
+                  {totalSpentValue.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </p>
+              </div>
+              {/* Desktop-only inline Add Expense button */}
+              <div className="hidden flex-shrink-0 sm:block">
+                <Button
+                  size="sm"
+                  className="rounded-full bg-slate-900/80 text-white ring-1 ring-white/20 hover:bg-slate-800"
+                  onClick={() => {
+                    setSelectedExpense(null);
+                    setIsAddExpenseOpen(true);
+                  }}
+                >
+                  <Plus className="mr-1.5 h-4 w-4" /> Add Expense
+                </Button>
+              </div>
             </div>
-            <div className="flex-shrink-0">
+
+            {/* Mobile-only full-width Add Expense button */}
+            <div className="mt-5 sm:hidden">
               <Button
-                size="sm"
-                className="rounded-full bg-slate-900/80 text-white ring-1 ring-white/20 hover:bg-slate-800"
+                className="w-full rounded-full bg-slate-900 py-3 text-sm font-semibold text-white hover:bg-black"
                 onClick={() => {
                   setSelectedExpense(null);
                   setIsAddExpenseOpen(true);
                 }}
               >
-                <Plus className="mr-1.5 h-4 w-4" /> Add Expense
+                <Plus className="mr-2 h-4 w-4" /> Add Expense
               </Button>
             </div>
           </div>
@@ -212,7 +331,7 @@ export default function GroupDetailsPage() {
           )}
 
           {/* Horizontal tabs */}
-          <div className="mt-6 flex gap-1">
+          <div className="mt-6 grid grid-cols-3 items-end gap-1">
             {(
               [
                 { id: "expenses", label: "Expenses", count: expenses.length },
@@ -225,17 +344,17 @@ export default function GroupDetailsPage() {
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex flex-1 items-center justify-center gap-1.5 rounded-t-2xl px-4 py-3 text-xs font-semibold uppercase tracking-widest transition",
+                  "flex min-w-0 items-center justify-center gap-1 rounded-t-[1.35rem] px-1.5 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] transition sm:gap-1.5 sm:px-4 sm:text-xs sm:tracking-widest",
                   activeTab === tab.id
-                    ? "bg-white/15 text-white shadow-inner backdrop-blur-md ring-1 ring-white/20"
+                    ? "border border-b-0 border-white/18 bg-white/18 text-white shadow-[0_-8px_24px_rgba(15,23,42,0.16)] backdrop-blur-md"
                     : "text-slate-400 hover:text-white/70",
                 )}
               >
-                {tab.label}
+                <span>{tab.label}</span>
                 {tab.count !== null && (
                   <span
                     className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums sm:text-[10px]",
                       activeTab === tab.id
                         ? "bg-white/20 text-white"
                         : "bg-white/10 text-slate-400",
@@ -284,73 +403,91 @@ export default function GroupDetailsPage() {
                     const viewerIsPayee = vid === expense.paidBy;
                     const viewerSplit = vid ? expense.splits.find((s) => s.memberId === vid) : undefined;
                     const isLast = idx === items.length - 1;
+                    const isSwiped = swipedId === expense.id;
                     return (
                       <div
                         key={expense.id}
                         className={cn(
-                          "relative flex items-center gap-4 bg-white px-4 py-3",
+                          "relative overflow-hidden bg-white",
+                          openMenuId === expense.id && "z-20",
                           !isLast && "border-b border-slate-100",
                         )}
                       >
-                        {/* Date badge */}
-                        <div className="flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-sky-500 text-white">
-                          <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">{month}</span>
-                          <span className="mt-0.5 text-xl font-bold leading-none">{day}</span>
-                        </div>
-
-                        {/* Middle: name + paid by */}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold text-slate-900">{expense.name}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">Paid by {paidByName}</p>
-                        </div>
-
-                        {/* Right: amount + your share */}
-                        <div className="flex-shrink-0 text-right">
-                          <p className="font-bold text-slate-900">
-                            {group.currency}{expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <p className="mt-0.5 text-xs text-slate-500">
-                            your share{" "}
-                            {viewerIsPayee ? (
-                              <span className="font-semibold text-emerald-700">PAID</span>
-                            ) : viewerSplit ? (
-                              <span className="font-semibold text-slate-700">
-                                {group.currency}{viewerSplit.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            ) : (
-                              <span className="font-semibold text-slate-400">—</span>
-                            )}
-                          </p>
-                        </div>
-
-                        {/* Three-dot menu */}
-                        <div className="relative flex-shrink-0">
+                        {/* Swipe action buttons — mobile only */}
+                        <div className="absolute inset-y-0 right-0 flex sm:hidden">
                           <button
                             type="button"
-                            onClick={() => setOpenMenuId(openMenuId === expense.id ? null : expense.id)}
-                            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                            aria-label="Expense options"
+                            onClick={() => handleOpenEditExpense(expense)}
+                            className="flex w-16 items-center justify-center bg-sky-500 text-white transition hover:bg-sky-600"
+                            aria-label="Edit expense"
                           >
-                            <MoreVertical className="h-4 w-4" />
+                            <Edit3 className="h-5 w-5" />
                           </button>
-                          {openMenuId === expense.id && (
-                            <div className="absolute right-0 top-9 z-10 min-w-[120px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditExpense(expense)}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                              >
-                                <Edit3 className="h-3.5 w-3.5" /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteExpense(expense.id)}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                              </button>
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteExpense(expense.id)}
+                            className="flex w-16 items-center justify-center bg-slate-900 text-white transition hover:bg-black"
+                            aria-label="Delete expense"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </button>
+                        </div>
+
+                        {/* Swipeable card content */}
+                        <div
+                          className="relative flex items-center gap-4 bg-white px-4 py-3 transition-transform duration-200 ease-out"
+                          style={{ transform: isSwiped ? "translateX(-128px)" : "translateX(0)" }}
+                          onTouchStart={(e) => handleTouchStart(e, expense.id)}
+                          onTouchEnd={(e) => handleTouchEnd(e, expense.id)}
+                          onClick={() => isSwiped && setSwipedId(null)}
+                        >
+                          {/* Date badge */}
+                          <div className="flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-sky-500 text-white">
+                            <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">{month}</span>
+                            <span className="mt-0.5 text-xl font-bold leading-none">{day}</span>
+                          </div>
+
+                          {/* Middle: name + paid by */}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold text-slate-900">{expense.name}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">Paid by {paidByName}</p>
+                          </div>
+
+                          {/* Right: amount + your share */}
+                          <div className="flex-shrink-0 text-right">
+                            <p className="font-bold text-slate-900">
+                              {group.currency}{expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              your share{" "}
+                              {viewerIsPayee ? (
+                                <span className="font-semibold text-emerald-700">PAID</span>
+                              ) : viewerSplit ? (
+                                <span className="font-semibold text-slate-700">
+                                  {group.currency}{viewerSplit.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-slate-400">—</span>
+                              )}
+                            </p>
+                          </div>
+
+                          {/* Three-dot menu — desktop only */}
+                          <div className="relative hidden flex-shrink-0 sm:block">
+                            <button
+                              ref={(node) => {
+                                menuButtonRefs.current[expense.id] = node;
+                              }}
+                              type="button"
+                              onClick={() => toggleExpenseMenu(expense.id)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                              aria-label="Expense options"
+                              aria-expanded={openMenuId === expense.id}
+                              aria-haspopup="menu"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -360,6 +497,35 @@ export default function GroupDetailsPage() {
             )}
           </div>
         )}
+
+        {openMenuExpense && menuPosition && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={menuRef}
+                className="fixed z-30 min-w-[152px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
+                style={{ top: menuPosition.top, left: menuPosition.left }}
+                role="menu"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleOpenEditExpense(openMenuExpense)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  role="menuitem"
+                >
+                  <Edit3 className="h-3.5 w-3.5" /> Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteExpense(openMenuExpense.id)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                  role="menuitem"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </button>
+              </div>,
+              document.body,
+            )
+          : null}
 
         {/* BALANCES */}
         {activeTab === "balances" && (
@@ -445,7 +611,7 @@ export default function GroupDetailsPage() {
 
         {/* MEMBERS */}
         {activeTab === "members" && (
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="">
             {group.members.map((member) => (
               <div key={member.id} className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
                 <div className="flex items-center gap-3">
@@ -473,9 +639,10 @@ export default function GroupDetailsPage() {
         initialData={selectedExpense ?? undefined}
         members={group.members}
         currency={group.currency}
+        groupName={group.name}
       />
 
-      <AddGroupModal
+      <EditGroupModal
         isOpen={isEditGroupOpen}
         onClose={() => setIsEditGroupOpen(false)}
         onSubmit={handleSaveGroup}

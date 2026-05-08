@@ -1,6 +1,8 @@
-import { MoreVertical } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Edit3, MoreVertical, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { GroupAvatar } from "@/components/dashboard/group-media";
 import type { GroupMember } from "@/hooks/use-groups";
 
 interface GroupCardProps {
@@ -11,6 +13,8 @@ interface GroupCardProps {
   balance: number; // positive means you lent, negative means you owe
   currency: string;
   members: GroupMember[];
+  onEdit: () => void;
+  onDelete: () => void;
 }
 
 export function GroupCard({
@@ -21,6 +25,8 @@ export function GroupCard({
   balance,
   currency,
   members,
+  onEdit,
+  onDelete,
 }: GroupCardProps) {
   const isPositive = balance >= 0;
   const balanceText = isPositive ? "group owes you" : "you owe";
@@ -30,11 +36,53 @@ export function GroupCard({
     maximumFractionDigits: 2,
   })}`;
   const previewMembers = members.slice(0, 3);
+  const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const handlePointerDown = (event: globalThis.MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isMenuOpen]);
+
+  const handleMoreClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setIsMenuOpen((prev) => !prev);
+  };
+
+  const handleMenuAction = (event: ReactMouseEvent<HTMLButtonElement>, action: () => void) => {
+    event.stopPropagation();
+    setIsMenuOpen(false);
+    action();
+  };
 
   return (
-    <Link
-      to={`/group/${id}`}
-      className="group relative flex w-full flex-col gap-3 rounded-[24px] border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md sm:gap-4 sm:rounded-[28px]"
+    <article
+      onClick={() => navigate(`/group/${id}`)}
+      onKeyDown={(e) => e.key === "Enter" && navigate(`/group/${id}`)}
+      role="link"
+      tabIndex={0}
+      aria-label={`Open ${name}`}
+      className="group flex w-full cursor-pointer flex-col gap-3 rounded-[24px] border p-3 transition-all hover:-translate-y-0.5 hover:shadow-md sm:gap-4 sm:rounded-[28px]"
       style={{
         background:
           "var(--Log-in-Background, linear-gradient(180deg, var(--Blue, #D0EEF0) 66.83%, #F7F8F9 100%))",
@@ -42,31 +90,64 @@ export function GroupCard({
         filter: "drop-shadow(0 4px 4px rgba(255, 255, 255, 0.44))",
       }}
     >
-      <div className="flex items-start gap-3 overflow-hidden sm:gap-4 lg:items-center">
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[18px] bg-slate-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-[22px] lg:h-14 lg:w-14">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={name}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-slate-200 text-xl font-bold text-slate-700">
-              {name.charAt(0).toUpperCase()}
-            </div>
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-3 pt-0.5 sm:gap-4 sm:pt-1">
-          <div className="flex min-w-0 items-start justify-between gap-2 sm:gap-3 lg:items-center lg:gap-4">
-            <div className="min-w-0 flex-1">
-              <h3 className="truncate text-md font-semibold uppercase leading-tight tracking-tight text-slate-800 lg:text-lg">
-                {name}
-              </h3>
-              {description ? (
-                <p className="mt-1 truncate text-xs text-slate-600 sm:text-sm">{description}</p>
-              ) : null}
-            </div>
-            <div className="hidden lg:flex shrink-0 items-center gap-2 rounded-full border border-white/70 bg-white/85 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-sm">
+      <div className="flex items-start gap-3 sm:gap-4 lg:items-stretch">
+        <GroupAvatar
+          name={name}
+          imageUrl={imageUrl}
+          className="h-12 w-12 shrink-0 rounded-[18px] bg-slate-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-[22px] lg:h-14 lg:w-14"
+          imageClassName="transition-transform duration-300 group-hover:scale-105"
+          fallbackClassName="text-sm sm:text-lg"
+        />
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-3 pt-0.5 sm:gap-4 sm:pt-1 lg:gap-4">
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-md font-semibold uppercase leading-tight tracking-tight text-slate-800 lg:text-lg">
+              {name}
+            </h3>
+            {description ? (
+              <p className="mt-1 truncate text-xs text-slate-600 sm:text-sm">{description}</p>
+            ) : null}
+          </div>
+
+          <div ref={menuRef} className="relative flex shrink-0 flex-col items-end justify-start gap-3 self-stretch lg:justify-end">
+            <button
+              type="button"
+              aria-label={`Open actions for ${name}`}
+              aria-haspopup="menu"
+              aria-expanded={isMenuOpen}
+              onClick={handleMoreClick}
+              className="shrink-0 rounded-full p-1 text-slate-800 transition-colors hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/70"
+            >
+              <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
+
+            {isMenuOpen ? (
+              <div
+                role="menu"
+                onClick={(event) => event.stopPropagation()}
+                className="absolute right-0 top-8 z-20 min-w-[140px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg shadow-slate-900/10"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => handleMenuAction(event, onEdit)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Edit3 className="h-4 w-4" />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => handleMenuAction(event, onDelete)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
+              </div>
+            ) : null}
+
+            <div className="hidden shrink-0 items-center gap-2 rounded-full border border-white/70 bg-white/85 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-sm lg:flex">
               <div className="flex shrink-0 items-center -space-x-2.5">
                 {previewMembers.length > 0 ? (
                   previewMembers.map((member, index) => (
@@ -99,9 +180,6 @@ export function GroupCard({
                 {formattedBalance}
               </p>
             </div>
-            <span className="shrink-0 rounded-full p-1 text-slate-800 transition-colors group-hover:bg-white/50">
-              <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
-            </span>
           </div>
         </div>
       </div>
@@ -113,7 +191,7 @@ export function GroupCard({
               <div
                 key={member.id}
                 className={cn(
-                  "flex h-5 w-5 lg:h-7 lg:w-7 text-[10px] lg:text-xs items-center justify-center rounded-full border-2 border-white text-slate-900",
+                  "flex h-5 w-5 items-center justify-center rounded-full border-2 border-white text-[10px] text-slate-900",
                   index === 0 && "bg-slate-100",
                   index === 1 && "bg-slate-950 text-white",
                   index === 2 && "bg-emerald-300",
@@ -124,16 +202,16 @@ export function GroupCard({
               </div>
             ))
           ) : (
-            <div className="h-5 w-5 lg:h-7 lg:w-7 rounded-full border-2 border-white bg-slate-100" aria-hidden="true" />
+            <div className="h-5 w-5 rounded-full border-2 border-white bg-slate-100" aria-hidden="true" />
           )}
         </div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 pr-3">
-          <p className="min-w-0 text-center font-medium uppercase tracking-[0.08em] text-sky-700 text-[8px] lg:text-xs">
+          <p className="min-w-0 text-center text-[8px] font-medium uppercase tracking-[0.08em] text-sky-700">
             {balanceText}
           </p>
           <p
             className={cn(
-              "shrink-0 text-right text-base font-semibold leading-none text-sm lg:text-lg",
+              "shrink-0 text-right text-sm font-semibold leading-none",
               isPositive ? "text-sky-950" : "text-rose-700",
             )}
           >
@@ -141,6 +219,6 @@ export function GroupCard({
           </p>
         </div>
       </div>
-    </Link>
+    </article>
   );
 }
