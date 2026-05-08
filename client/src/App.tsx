@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/query-client";
+import { RealtimeUpdatesBridge } from "@/features/realtime/realtime-bridge";
 import { ProtectedRoute } from "@/routes/protected-route";
 import { PublicOnlyRoute } from "@/routes/public-only-route";
 import { AuthScreenFallback } from "@/components/layout/auth-screen-fallback";
@@ -17,6 +18,7 @@ const NotFoundPage = lazy(() => import("@/pages/not-found"));
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <RealtimeUpdatesBridge />
       <BrowserRouter>
         <Suspense fallback={<AuthScreenFallback />}>
           <Routes>

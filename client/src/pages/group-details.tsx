@@ -9,9 +9,18 @@ import { GroupAvatar, GroupCoverBackground } from "@/components/dashboard/group-
 import { usePersistentState, useOnlineStatus } from "@/hooks/use-persistent-state";
 import { type GroupData, type GroupExpense, useGroupsState } from "@/hooks/use-groups";
 import { useCurrentUser } from "@/features/auth/use-auth";
+import { useGroupQuery } from "@/features/groups/use-groups";
 import {
-  netForMember,
-  netMemberOwesViewer,
+  useCreateExpenseMutation,
+  useDeleteExpenseMutation,
+  useExpensesQuery,
+  useUpdateExpenseMutation,
+} from "@/features/expenses/use-expenses";
+import {
+  useMarkSettlementPaidMutation,
+  useSettlementHistoryQuery,
+} from "@/features/settlements/use-settlements";
+import {
   resolveViewerMemberId,
   totalSpent,
 } from "@/lib/group-money";
@@ -25,9 +34,51 @@ const EXPENSE_MENU_MARGIN = 12;
 export default function GroupDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [groups, setGroups] = useGroupsState();
-  const group = groups.find((groupItem) => groupItem.id === id);
-  const [expenses, setExpenses] = usePersistentState<GroupExpense[]>(`group-expenses-${id ?? "unknown"}`, []);
+  const groupId = id ?? "";
+  const { data: apiGroup } = useGroupQuery(groupId);
+  const { data: apiExpenses = [] } = useExpensesQuery(groupId);
+  const { data: settlementHistory = [] } = useSettlementHistoryQuery(groupId);
+  const markPaidMutation = useMarkSettlementPaidMutation(groupId);
+  const createExpenseMutation = useCreateExpenseMutation(groupId);
+  const updateExpenseMutation = useUpdateExpenseMutation(groupId);
+  const deleteExpenseMutation = useDeleteExpenseMutation(groupId);
+  const group: GroupData | undefined = useMemo(
+    () =>
+      apiGroup
+        ? {
+            id: apiGroup.id,
+            name: apiGroup.name,
+            description: apiGroup.description ?? "",
+            currency: apiGroup.currency,
+            members: apiGroup.members,
+            balance: 0,
+            createdAt: apiGroup.createdAt,
+          }
+        : undefined,
+    [apiGroup],
+  );
+  const expenses: GroupExpense[] = useMemo(
+    () =>
+      apiExpenses.map((expense) => ({
+        id: expense.id,
+        name: expense.titleDescription,
+        amount: expense.totalAmount,
+        currency: group?.currency ?? "₱",
+        paidBy: expense.paidByUserId ?? "",
+        date: expense.saleDate,
+        note: "",
+        splits: expense.splits.map((split) => ({
+          memberId: split.userId,
+          amount: split.amountOwed,
+        })),
+        memberDiscounts: (expense.memberDiscounts ?? []).map((discount) => ({
+          memberId: discount.userId,
+          type: discount.type,
+        })),
+        status: "synced",
+      })),
+    [apiExpenses, group?.currency],
+  );
   const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "members">("expenses");
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isEditGroupOpen, setIsEditGroupOpen] = useState(false);
@@ -43,29 +94,57 @@ export default function GroupDetailsPage() {
 
   const totalSpentValue = useMemo(() => totalSpent(expenses), [expenses]);
 
-  const pendingCount = useMemo(
-    () => expenses.filter((expense) => expense.status === "pending").length,
-    [expenses],
-  );
+  const pendingCount = useMemo(() => 0, []);
 
   const viewerNet = useMemo(() => {
     if (!group) return 0;
-    const vid = resolveViewerMemberId(group, user?.name);
-    return vid ? netForMember(expenses, vid) : 0;
-  }, [group, expenses, user?.name]);
+    const viewerId = resolveViewerMemberId(group, user?.name, user?.id);
+    if (!viewerId) return 0;
+    return apiExpenses.reduce((sum, expense) => {
+      const payerId = expense.paidByUserId;
+      if (!payerId) return sum;
+      if (payerId === viewerId) {
+        const othersUnsettled = expense.splits
+          .filter((split) => split.userId !== viewerId && !split.isSettled)
+          .reduce((acc, split) => acc + split.amountOwed, 0);
+        return sum + othersUnsettled;
+      }
+      const viewerSplit = expense.splits.find((split) => split.userId === viewerId && !split.isSettled);
+      return sum - (viewerSplit?.amountOwed ?? 0);
+    }, 0);
+  }, [apiExpenses, group, user?.id, user?.name]);
 
   const balancesWithOthers = useMemo(() => {
     if (!group) return [];
-    const vid = resolveViewerMemberId(group, user?.name);
-    if (!vid) return [];
+    const viewerId = resolveViewerMemberId(group, user?.name, user?.id);
+    if (!viewerId) return [];
     return group.members
-      .filter((m) => m.id !== vid)
-      .map((m) => ({
-        id: m.id,
-        name: m.name,
-        netOwesYou: netMemberOwesViewer(expenses, vid, m.id),
-      }));
-  }, [group, expenses, user?.name]);
+      .filter((member) => member.id !== viewerId)
+      .map((member) => {
+        const netOwesYou = apiExpenses.reduce((sum, expense) => {
+          const payerId = expense.paidByUserId;
+          if (!payerId) return sum;
+          if (payerId === viewerId) {
+            const memberSplit = expense.splits.find(
+              (split) => split.userId === member.id && !split.isSettled,
+            );
+            return sum + (memberSplit?.amountOwed ?? 0);
+          }
+          if (payerId === member.id) {
+            const viewerSplit = expense.splits.find(
+              (split) => split.userId === viewerId && !split.isSettled,
+            );
+            return sum - (viewerSplit?.amountOwed ?? 0);
+          }
+          return sum;
+        }, 0);
+        return {
+          id: member.id,
+          name: member.name,
+          netOwesYou: Number(netOwesYou.toFixed(2)),
+        };
+      });
+  }, [apiExpenses, group, user?.id, user?.name]);
 
   const groupedExpenses = useMemo(() => {
     const map = new Map<string, GroupExpense[]>();
@@ -175,22 +254,41 @@ export default function GroupDetailsPage() {
   }
 
   const handleSaveGroup = (updated: GroupData) => {
-    setGroups((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+    void updated;
     setIsEditGroupOpen(false);
   };
 
-  const handleAddExpense = (expense: GroupExpense) => {
-    setExpenses((prev) => [{ ...expense, status: isOnline ? "synced" : "pending" }, ...prev]);
+  const toExpensePayload = (expense: GroupExpense) => ({
+    groupId: Number(groupId),
+    titleDescription: expense.name,
+    totalAmount: expense.amount,
+    paidByUserId: Number(expense.paidBy),
+    saleDate: expense.date,
+    taxAmount: 0,
+    tipAmount: 0,
+    splitType: "exact" as const,
+    participantUserIds: expense.splits.map((split) => Number(split.memberId)),
+    splits: expense.splits.map((split) => ({
+      userId: Number(split.memberId),
+      amount: split.amount,
+    })),
+    memberDiscounts: (expense.memberDiscounts ?? []).map((entry) => ({
+      userId: Number(entry.memberId),
+      type: entry.type,
+    })),
+  });
+
+  const handleAddExpense = async (expense: GroupExpense) => {
+    await createExpenseMutation.mutateAsync(toExpensePayload(expense));
     setSelectedExpense(null);
     setIsAddExpenseOpen(false);
   };
 
-  const handleEditExpense = (expense: GroupExpense) => {
-    setExpenses((prev) =>
-      prev.map((item) =>
-        item.id === expense.id ? { ...expense, status: isOnline ? "synced" : "pending" } : item,
-      ),
-    );
+  const handleEditExpense = async (expense: GroupExpense) => {
+    await updateExpenseMutation.mutateAsync({
+      expenseId: expense.id,
+      payload: toExpensePayload(expense),
+    });
     setSelectedExpense(null);
     setIsAddExpenseOpen(false);
   };
@@ -201,8 +299,8 @@ export default function GroupDetailsPage() {
     setOpenMenuId(null);
   };
 
-  const handleDeleteExpense = (expenseId: string) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+  const handleDeleteExpense = async (expenseId: string) => {
+    await deleteExpenseMutation.mutateAsync({ expenseId });
     setOpenMenuId(null);
     setSwipedId(null);
   };
@@ -226,6 +324,29 @@ export default function GroupDetailsPage() {
   const openMenuExpense = openMenuId
     ? expenses.find((expense) => expense.id === openMenuId) ?? null
     : null;
+  const handleMarkPaid = async (
+    viewerId: string,
+    otherUserId: string,
+    netOwesYou: number,
+  ) => {
+    const absoluteAmount = Number(Math.abs(netOwesYou).toFixed(2));
+    if (absoluteAmount <= 0) return;
+    if (netOwesYou > 0) {
+      await markPaidMutation.mutateAsync({
+        fromUserId: Number(otherUserId),
+        toUserId: Number(viewerId),
+        amount: absoluteAmount,
+      });
+      return;
+    }
+    await markPaidMutation.mutateAsync({
+      fromUserId: Number(viewerId),
+      toUserId: Number(otherUserId),
+      amount: absoluteAmount,
+    });
+  };
+
+  const onlineLabel = isOnline ? "Online" : "Offline";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -399,7 +520,7 @@ export default function GroupDetailsPage() {
                     const month = d.toLocaleString(undefined, { month: "short" }).toUpperCase();
                     const day = d.getDate();
                     const paidByName = group.members.find((m) => m.id === expense.paidBy)?.name ?? "Unknown";
-                    const vid = resolveViewerMemberId(group, user?.name);
+                    const vid = resolveViewerMemberId(group, user?.name, user?.id);
                     const viewerIsPayee = vid === expense.paidBy;
                     const viewerSplit = vid ? expense.splits.find((s) => s.memberId === vid) : undefined;
                     const isLast = idx === items.length - 1;
@@ -488,6 +609,26 @@ export default function GroupDetailsPage() {
                               <MoreVertical className="h-4 w-4" />
                             </button>
                           </div>
+                          {openMenuId === expense.id && (
+                            <div className="absolute right-0 top-9 z-10 min-w-[120px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditExpense(expense)}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" /> Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleDeleteExpense(expense.id);
+                                }}
+                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -573,6 +714,7 @@ export default function GroupDetailsPage() {
                       {balancesWithOthers.map((row) => {
                         const abs = Math.abs(row.netOwesYou);
                         const settled = abs < 0.005;
+                        const viewerId = group ? resolveViewerMemberId(group, user?.name, user?.id) : undefined;
                         let label: string;
                         if (settled) label = "Settled up";
                         else if (row.netOwesYou > 0)
@@ -593,6 +735,18 @@ export default function GroupDetailsPage() {
                               )}
                             >
                               {label}
+                              {!settled && viewerId ? (
+                                <button
+                                  type="button"
+                                  className="ml-3 rounded-md border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                                  disabled={markPaidMutation.isPending}
+                                  onClick={() => {
+                                    void handleMarkPaid(viewerId, row.id, row.netOwesYou);
+                                  }}
+                                >
+                                  Mark paid
+                                </button>
+                              ) : null}
                             </td>
                           </tr>
                         );
@@ -605,6 +759,40 @@ export default function GroupDetailsPage() {
                 Expenses paid by someone else are not split between pairs here—only when you or this
                 member paid.
               </p>
+            </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-900">Settlement history</h3>
+              {settlementHistory.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">No settlements recorded yet.</p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {settlementHistory.slice(0, 10).map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-slate-700">
+                          #{entry.id} {entry.fromUserName} paid {entry.toUserName}
+                          {entry.note ? ` for ${entry.note.replace(/^For:\s*/i, "")}` : ""}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {new Date(entry.paidAt).toLocaleString()}
+                          {entry.reference ? ` • Ref: ${entry.reference}` : ""}
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {group.currency}
+                        {entry.amountPaid.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -635,7 +823,13 @@ export default function GroupDetailsPage() {
           setSelectedExpense(null);
           setIsAddExpenseOpen(false);
         }}
-        onSubmit={selectedExpense ? handleEditExpense : handleAddExpense}
+        onSubmit={(expense) => {
+          if (selectedExpense) {
+            void handleEditExpense(expense);
+            return;
+          }
+          void handleAddExpense(expense);
+        }}
         initialData={selectedExpense ?? undefined}
         members={group.members}
         currency={group.currency}
