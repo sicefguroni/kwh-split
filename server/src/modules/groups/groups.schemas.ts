@@ -15,6 +15,16 @@ export const JoinGroupSchema = z.object({
   path: ["userId"],
 });
 
+export const InviteByEmailSchema = z.object({
+  email: z.string().email("Invalid email address"),
+});
+
+export const AcceptInvitationSchema = z.object({
+  token: z.string().min(1, "Invitation token is required"),
+});
+
 export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateGroupInput = z.infer<typeof UpdateGroupSchema>;
 export type JoinGroupInput = z.infer<typeof JoinGroupSchema>;
+export type InviteByEmailInput = z.infer<typeof InviteByEmailSchema>;
+export type AcceptInvitationInput = z.infer<typeof AcceptInvitationSchema>;
