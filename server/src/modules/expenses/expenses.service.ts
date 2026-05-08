@@ -2,6 +2,7 @@ import { badRequest } from "../../utils/errors.js";
 import { assertGroupMember } from "../common/authorization.js";
 import { calculateExpenseDetails } from "./expenses.calculations.js";
 import { expensesRepository } from "./expenses.repository.js";
+import { broadcastGroupChange } from "../realtime/realtime-hub.js";
 import type { ExpenseWriteInput } from "./expenses.schemas.js";
 
 interface PublicExpenseSplit {
@@ -101,6 +102,7 @@ export const expensesService = {
       receiptItems: calculated.receiptItems,
       memberDiscounts: calculated.memberDiscounts,
     });
+    broadcastGroupChange(input.groupId);
     return String(expenseId);
   },
 
@@ -131,6 +133,7 @@ export const expensesService = {
     if (!updated) {
       throw badRequest("Expense not found", "expense_not_found");
     }
+    broadcastGroupChange(input.groupId);
   },
 
   async remove(expenseId: number, requesterUserId: number): Promise<void> {
@@ -143,5 +146,6 @@ export const expensesService = {
     if (!deleted) {
       throw badRequest("Expense not found", "expense_not_found");
     }
+    broadcastGroupChange(groupId);
   },
 };
