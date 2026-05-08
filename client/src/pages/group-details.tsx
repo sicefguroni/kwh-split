@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { AddExpenseModal } from "@/components/expenses/add-expense-modal";
 import { EditGroupModal } from "@/components/dashboard/add-group-modal";
 import { GroupAvatar, GroupCoverBackground } from "@/components/dashboard/group-media";
-import { usePersistentState, useOnlineStatus } from "@/hooks/use-persistent-state";
-import { type GroupData, type GroupExpense, useGroupsState } from "@/hooks/use-groups";
+import { useOnlineStatus } from "@/hooks/use-persistent-state";
+import { type GroupData, type GroupExpense } from "@/hooks/use-groups";
 import { useCurrentUser } from "@/features/auth/use-auth";
 import { useGroupQuery } from "@/features/groups/use-groups";
 import {
@@ -156,27 +156,6 @@ export default function GroupDetailsPage() {
     }
     return Array.from(map.entries()).map(([date, items]) => ({ date, items }));
   }, [expenses]);
-
-  useEffect(() => {
-    if (!isOnline) return;
-    setExpenses((prev) =>
-      prev.map((expense) =>
-        expense.status === "pending" ? { ...expense, status: "synced" } : expense,
-      ),
-    );
-  }, [isOnline, setExpenses]);
-
-  useEffect(() => {
-    if (!group) return;
-    const vid = resolveViewerMemberId(group, user?.name);
-    if (!vid) return;
-    const bal = netForMember(expenses, vid);
-    setGroups((prev) => {
-      const cur = prev.find((g) => g.id === group.id);
-      if (!cur || cur.balance === bal) return prev;
-      return prev.map((g) => (g.id === group.id ? { ...g, balance: bal } : g));
-    });
-  }, [expenses, group, user?.name, setGroups]);
 
   useEffect(() => {
     if (!openMenuId) {
@@ -345,8 +324,6 @@ export default function GroupDetailsPage() {
       amount: absoluteAmount,
     });
   };
-
-  const onlineLabel = isOnline ? "Online" : "Offline";
 
   return (
     <div className="min-h-screen bg-slate-50">
