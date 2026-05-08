@@ -1,13 +1,15 @@
-import { Plus } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQueries } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AddGroupModal } from "@/components/dashboard/add-group-modal";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { EmptyGroupsState } from "@/components/dashboard/empty-groups-state";
 import { GroupCard } from "@/components/dashboard/group-card";
-import { AddGroupModal } from "@/components/dashboard/add-group-modal";
+import { Button } from "@/components/ui/button";
 import { useCurrentUser, useLogoutMutation } from "@/features/auth/use-auth";
+import { expensesApi } from "@/features/expenses/api";
+import type { ApiExpense } from "@/features/expenses/types";
 import {
   useCreateGroupMutation,
   useDeleteGroupMutation,
@@ -19,14 +21,14 @@ import { useOnlineStatus } from "@/hooks/use-persistent-state";
 import type { GroupData } from "@/hooks/use-groups";
 import { ApiError } from "@/lib/api-client";
 import { resolveViewerMemberId } from "@/lib/group-money";
-import { expensesApi } from "@/features/expenses/api";
-import type { ApiExpense } from "@/features/expenses/types";
 
-const getFirstName = (fullName: string | undefined): string =>
-  fullName?.split(" ")[0] ?? "there";
+const getFirstName = (fullName: string | undefined): string => fullName?.split(" ")[0] ?? "there";
 
 function formatMoney(amount: number): string {
-  return amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function DashboardPage() {
@@ -41,21 +43,6 @@ export default function DashboardPage() {
   const isOnline = useOnlineStatus();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<GroupData | null>(null);
-  const [groups, setGroups] = useGroupsState();
-
-  useEffect(() => {
-    setGroups((prev) => {
-      let changed = false;
-      const next = prev.map((g) => {
-        const vid = resolveViewerMemberId(g, user?.name);
-        if (!vid) return g;
-        const bal = netForMember(readGroupExpensesFromStorage(g.id), vid);
-        if (g.balance !== bal) changed = true;
-        return { ...g, balance: bal };
-      });
-      return changed ? next : prev;
-    });
-  }, [user?.name, setGroups, groups.length]);
   const [actionMessage, setActionMessage] = useState<{
     kind: "success" | "error";
     text: string;
@@ -94,15 +81,18 @@ export default function DashboardPage() {
         if (!viewerId) {
           return { ...group, balance: 0 };
         }
+
         const net = expenses.reduce((sum, expense) => {
           const payerId = expense.paidByUserId;
           if (!payerId) return sum;
+
           if (payerId === viewerId) {
             const othersUnsettled = expense.splits
               .filter((split) => split.userId !== viewerId && !split.isSettled)
-              .reduce((acc, split) => acc + split.amountOwed, 0);
+              .reduce((subtotal, split) => subtotal + split.amountOwed, 0);
             return sum + othersUnsettled;
           }
+
           const viewerSplit = expense.splits.find(
             (split) => split.userId === viewerId && !split.isSettled,
           );
@@ -127,64 +117,63 @@ export default function DashboardPage() {
     navigate("/login", { replace: true });
   };
 
-  const handleSaveGroup = (group: GroupData) => {
-    setGroups((prev) => {
-      const existingIndex = prev.findIndex((item) => item.id === group.id);
-      if (existingIndex === -1) {
-        return [group, ...prev];
-      }
-
-      return prev.map((item) => (item.id === group.id ? group : item));
-    });
-  const handleAddGroup = async (data: AddGroupData) => {
+  const handleSaveGroup = async (group: GroupData): Promise<void> => {
     try {
       if (editingGroup) {
         const updatedGroup = await updateGroupMutation.mutateAsync({
           id: editingGroup.id,
-          name: data.name,
-          description: data.description,
-          currency: data.currency,
+          name: group.name,
+          description: group.description,
+          currency: group.currency,
         });
+
         const existingNames = new Set(
           editingGroup.members.map((member) => member.name.trim().toLowerCase()),
         );
-        const addedMembers = data.members.filter(
+        const addedMembers = group.members.filter(
           (member) => !member.isAdmin && !existingNames.has(member.name.trim().toLowerCase()),
         );
+
         for (const member of addedMembers) {
           await joinGroupMutation.mutateAsync({
             id: updatedGroup.id,
             userName: member.name.trim(),
           });
         }
+
         setActionMessage({ kind: "success", text: "Group updated." });
       } else {
         const createdGroup = await createGroupMutation.mutateAsync({
-          name: data.name,
-          description: data.description,
-          currency: data.currency,
+          name: group.name,
+          description: group.description,
+          currency: group.currency,
         });
-        const membersToAdd = data.members.filter((member) => !member.isAdmin);
+
+        const membersToAdd = group.members.filter((member) => !member.isAdmin);
         for (const member of membersToAdd) {
           await joinGroupMutation.mutateAsync({
             id: createdGroup.id,
             userName: member.name.trim(),
           });
         }
+
         setActionMessage({ kind: "success", text: "Group created." });
       }
+
+      setEditingGroup(null);
+      setIsAddModalOpen(false);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setActionMessage({ kind: "error", text: "Session expired. Please log in again." });
         navigate("/login", { replace: true });
         return;
       }
-      const text = error instanceof ApiError ? error.message : "Unable to save group.";
-      setActionMessage({ kind: "error", text });
-      return;
+
+      setActionMessage({
+        kind: "error",
+        text: error instanceof ApiError ? error.message : "Unable to save group.",
+      });
     }
-    setEditingGroup(null);
-    setIsAddModalOpen(false);
   };
 
   const handleOpenCreateGroup = () => {
@@ -197,12 +186,10 @@ export default function DashboardPage() {
     setIsAddModalOpen(true);
   };
 
-  const handleDeleteGroup = (group: GroupData) => {
-    setGroups((prev) => prev.filter((item) => item.id !== group.id));
-    localStorage.removeItem(`group-expenses-${group.id}`);
-  const handleDeleteGroup = async (group: GroupData) => {
-    const confirmed = window.confirm(`Delete "${group.name}"? This cannot be undone.`);
+  const handleDeleteGroup = async (group: GroupData): Promise<void> => {
+    const confirmed = window.confirm(`Delete \"${group.name}\"? This cannot be undone.`);
     if (!confirmed) return;
+
     try {
       await deleteGroupMutation.mutateAsync({ id: group.id });
       setActionMessage({ kind: "success", text: "Group deleted." });
@@ -212,14 +199,16 @@ export default function DashboardPage() {
         navigate("/login", { replace: true });
         return;
       }
-      const text =
-        error instanceof ApiError ? error.message : "Unable to delete group.";
-      setActionMessage({ kind: "error", text });
+
+      setActionMessage({
+        kind: "error",
+        text: error instanceof ApiError ? error.message : "Unable to delete group.",
+      });
     }
   };
 
   return (
-    <div className="min-h-screen bg-white w-full">
+    <div className="min-h-screen w-full bg-white">
       <DashboardHeader
         onLogout={handleLogout}
         isLoggingOut={logout.isPending}
@@ -230,23 +219,23 @@ export default function DashboardPage() {
         <div className="pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative mx-auto w-full max-w-3xl space-y-10">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-12">
-            <h1 className="mt-3 mx-4 text-xl lg:text-3xl font-semibold text-ink-900 tracking-tight">
+            <h1 className="mt-3 mx-4 text-xl font-semibold tracking-tight text-ink-900 lg:text-3xl">
               Hello, {getFirstName(user?.name)}
             </h1>
 
             <div className="lg:mx-4 flex w-full max-w-sm flex-col gap-3 lg:shrink-0 lg:items-end">
               <div className="w-full rounded-3xl border border-gray-200 px-5 py-4 text-left sm:text-right">
-                <p className="text-[10px] text-ink-900 font-semibold uppercase tracking-[0.35em]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-ink-900">
                   Your net across groups
                 </p>
-                <p className="mt-2 text-ink-900 text-3xl font-semibold tabular-nums">
+                <p className="mt-2 text-3xl font-semibold tabular-nums text-ink-900">
                   ₱{formatMoney(totalBalance)}
                 </p>
               </div>
               <Button
                 size="md"
                 aria-label="Add Group"
-                className="fixed bottom-4 right-4 z-30 h-14 w-14 rounded-full bg-ink-900 hover:bg-ink-800 p-0 font-semibold text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition sm:static sm:h-11 sm:w-auto sm:px-6 sm:py-3 sm:shadow-lg"
+                className="fixed bottom-4 right-4 z-30 h-14 w-14 rounded-full bg-ink-900 p-0 font-semibold text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition hover:bg-ink-800 sm:static sm:h-11 sm:w-auto sm:px-6 sm:py-3 sm:shadow-lg"
                 onClick={handleOpenCreateGroup}
               >
                 <Plus className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" />
@@ -254,7 +243,6 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
-
         </div>
       </div>
 
@@ -282,29 +270,17 @@ export default function DashboardPage() {
         ) : null}
 
         <section className="flex flex-col gap-4">
-          <h2 className="text-base lg:text-lg text-ink-900">Your groups</h2>
+          <h2 className="text-base text-ink-900 lg:text-lg">Your groups</h2>
 
           <section aria-labelledby="groups-heading" className="flex flex-col gap-4">
-            {groups.length === 0 ? (
-              <EmptyGroupsState onCreate={handleOpenCreateGroup} />
-            ) : (
-              groups.map((group) => (
-                <GroupCard
-                  key={group.id}
-                  {...group}
-                  onEdit={() => handleOpenEditGroup(group)}
-                  onDelete={() => handleDeleteGroup(group)}
             {groupsWithBalance.length === 0 ? (
-              <EmptyGroupsState onCreate={() => setIsAddModalOpen(true)} />
+              <EmptyGroupsState onCreate={handleOpenCreateGroup} />
             ) : (
               groupsWithBalance.map((group) => (
                 <GroupCard
                   key={group.id}
                   {...group}
-                  onEdit={() => {
-                    setEditingGroup(group);
-                    setIsAddModalOpen(true);
-                  }}
+                  onEdit={() => handleOpenEditGroup(group)}
                   onDelete={() => {
                     void handleDeleteGroup(group);
                   }}
@@ -321,7 +297,9 @@ export default function DashboardPage() {
           setEditingGroup(null);
           setIsAddModalOpen(false);
         }}
-        onSubmit={handleSaveGroup}
+        onSubmit={(group) => {
+          void handleSaveGroup(group);
+        }}
         {...(editingGroup ? { initialData: editingGroup } : {})}
       />
     </div>

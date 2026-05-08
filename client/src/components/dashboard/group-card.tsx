@@ -1,14 +1,8 @@
-<<<<<<< ui-clean/pages
-import { Edit3, MoreVertical, Trash2 } from "lucide-react";
+import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
-=======
-import { MoreVertical, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { Link } from "react-router-dom";
->>>>>>> dev
-import { cn } from "@/lib/cn";
 import { GroupAvatar } from "@/components/dashboard/group-media";
+import { cn } from "@/lib/cn";
 import type { GroupMember } from "@/hooks/use-groups";
 
 interface GroupCardProps {
@@ -16,16 +10,11 @@ interface GroupCardProps {
   name: string;
   description?: string;
   imageUrl?: string;
-  balance: number; // positive means you lent, negative means you owe
+  balance: number;
   currency: string;
   members: GroupMember[];
-<<<<<<< ui-clean/pages
-  onEdit: () => void;
-  onDelete: () => void;
-=======
   onEdit?: () => void;
   onDelete?: () => void;
->>>>>>> dev
 }
 
 export function GroupCard({
@@ -39,7 +28,9 @@ export function GroupCard({
   onEdit,
   onDelete,
 }: GroupCardProps) {
+  const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const isPositive = balance >= 0;
   const balanceText = isPositive ? "group owes you" : "you owe";
   const absBalance = Math.abs(balance);
@@ -48,9 +39,7 @@ export function GroupCard({
     maximumFractionDigits: 2,
   })}`;
   const previewMembers = members.slice(0, 3);
-  const navigate = useNavigate();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const hasMenuActions = Boolean(onEdit || onDelete);
 
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -81,16 +70,23 @@ export function GroupCard({
     setIsMenuOpen((prev) => !prev);
   };
 
-  const handleMenuAction = (event: ReactMouseEvent<HTMLButtonElement>, action: () => void) => {
+  const handleMenuAction = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    action: (() => void) | undefined,
+  ) => {
     event.stopPropagation();
     setIsMenuOpen(false);
-    action();
+    action?.();
   };
 
   return (
     <article
       onClick={() => navigate(`/group/${id}`)}
-      onKeyDown={(e) => e.key === "Enter" && navigate(`/group/${id}`)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          navigate(`/group/${id}`);
+        }
+      }}
       role="link"
       tabIndex={0}
       aria-label={`Open ${name}`}
@@ -102,7 +98,6 @@ export function GroupCard({
         filter: "drop-shadow(0 4px 4px rgba(255, 255, 255, 0.44))",
       }}
     >
-<<<<<<< ui-clean/pages
       <div className="flex items-start gap-3 sm:gap-4 lg:items-stretch">
         <GroupAvatar
           name={name}
@@ -111,6 +106,7 @@ export function GroupCard({
           imageClassName="transition-transform duration-300 group-hover:scale-105"
           fallbackClassName="text-sm sm:text-lg"
         />
+
         <div className="flex min-w-0 flex-1 items-start justify-between gap-3 pt-0.5 sm:gap-4 sm:pt-1 lg:gap-4">
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-md font-semibold uppercase leading-tight tracking-tight text-slate-800 lg:text-lg">
@@ -121,73 +117,55 @@ export function GroupCard({
             ) : null}
           </div>
 
-          <div ref={menuRef} className="relative flex shrink-0 flex-col items-end justify-start gap-3 self-stretch lg:justify-end">
-            <button
-              type="button"
-              aria-label={`Open actions for ${name}`}
-              aria-haspopup="menu"
-              aria-expanded={isMenuOpen}
-              onClick={handleMoreClick}
-              className="shrink-0 rounded-full p-1 text-slate-800 transition-colors hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/70"
-            >
-              <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
-            </button>
+          <div
+            ref={menuRef}
+            className="relative flex shrink-0 flex-col items-end justify-start gap-3 self-stretch lg:justify-end"
+          >
+            {hasMenuActions ? (
+              <button
+                type="button"
+                aria-label={`Open actions for ${name}`}
+                aria-haspopup="menu"
+                aria-expanded={isMenuOpen}
+                onClick={handleMoreClick}
+                className="shrink-0 rounded-full p-1 text-slate-800 transition-colors hover:bg-white/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/70"
+              >
+                <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
+              </button>
+            ) : null}
 
-            {isMenuOpen ? (
+            {isMenuOpen && hasMenuActions ? (
               <div
                 role="menu"
                 onClick={(event) => event.stopPropagation()}
                 className="absolute right-0 top-8 z-20 min-w-[140px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg shadow-slate-900/10"
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={(event) => handleMenuAction(event, onEdit)}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
-                >
-                  <Edit3 className="h-4 w-4" />
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={(event) => handleMenuAction(event, onDelete)}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </button>
+                {onEdit ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={(event) => handleMenuAction(event, onEdit)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </button>
+                ) : null}
+                {onDelete ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={(event) => handleMenuAction(event, onDelete)}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </button>
+                ) : null}
               </div>
             ) : null}
 
             <div className="hidden shrink-0 items-center gap-2 rounded-full border border-white/70 bg-white/85 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-sm lg:flex">
-=======
-      <div className="flex items-start gap-3 overflow-visible sm:gap-4 lg:items-center">
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-[18px] bg-slate-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-[22px] lg:h-14 lg:w-14">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={name}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center bg-slate-200 text-xl font-bold text-slate-700">
-              {name.charAt(0).toUpperCase()}
-            </div>
-          )}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-3 pt-0.5 sm:gap-4 sm:pt-1">
-          <div className="flex min-w-0 items-start justify-between gap-2 sm:gap-3 lg:items-center lg:gap-4">
-            <div className="min-w-0 flex-1">
-              <h3 className="truncate text-md font-semibold uppercase leading-tight tracking-tight text-slate-800 lg:text-lg">
-                {name}
-              </h3>
-              {description ? (
-                <p className="mt-1 truncate text-xs text-slate-600 sm:text-sm">{description}</p>
-              ) : null}
-            </div>
-            <div className="hidden lg:flex shrink-0 items-center gap-2 rounded-full border border-white/70 bg-white/85 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-sm">
->>>>>>> dev
               <div className="flex shrink-0 items-center -space-x-2.5">
                 {previewMembers.length > 0 ? (
                   previewMembers.map((member, index) => (
@@ -205,7 +183,10 @@ export function GroupCard({
                     </div>
                   ))
                 ) : (
-                  <div className="h-5 w-5 rounded-full border-2 border-white bg-slate-100" aria-hidden="true" />
+                  <div
+                    className="h-5 w-5 rounded-full border-2 border-white bg-slate-100"
+                    aria-hidden="true"
+                  />
                 )}
               </div>
               <p className="whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.08em] text-sky-700">
@@ -220,54 +201,6 @@ export function GroupCard({
                 {formattedBalance}
               </p>
             </div>
-<<<<<<< ui-clean/pages
-=======
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                className="rounded-full p-1 text-slate-800 transition-colors group-hover:bg-white/50"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setIsMenuOpen((prev) => !prev);
-                }}
-              >
-                <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
-              </button>
-              {isMenuOpen ? (
-                <div
-                  className="absolute right-0 top-full z-20 mt-2 w-36 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      onEdit?.();
-                    }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      onDelete?.();
-                    }}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Delete
-                  </button>
-                </div>
-              ) : null}
-            </div>
->>>>>>> dev
           </div>
         </div>
       </div>

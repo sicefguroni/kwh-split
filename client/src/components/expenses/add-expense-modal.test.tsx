@@ -17,6 +17,7 @@ function renderModal() {
       initialData={undefined}
       members={members}
       currency="₱"
+      groupName="Trip Fund"
     />,
   );
 }

@@ -35,7 +35,7 @@ export function AddExpenseModal({
     amount, setAmount,
     paidBy, setPaidBy,
     date, setDate,
-    note,
+    note, setNote,
     splitType, setSplitType,
     memberSplitInputs, updateMemberSplitInput,
     updateExactAmount,
@@ -232,29 +232,6 @@ export function AddExpenseModal({
                 ariaLabel="Split type"
                 triggerClassName="border-0 bg-white text-ink-900 focus:ring-[#0074B7]/20"
                 menuClassName="border-mint-200"
-              <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
-                Paid by
-              </label>
-              <select
-                value={paidBy}
-                onChange={(e) => setPaidBy(e.target.value)}
-                aria-label="Paid by"
-                className="h-12 w-full rounded-xl border border-mint-200 bg-mint-50 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-mint-500/20"
-              >
-                <option value="" disabled>Paid By</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>{member.name}</option>
-                ))}
-              </select>
-              <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
-                Date
-              </label>
-              <Input
-                type="date"
-                aria-label="Expense date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="bg-mint-50 border-mint-200"
               />
               <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
                 Note
@@ -291,9 +268,8 @@ export function AddExpenseModal({
                 Select who is involved
               </div>
 
-              <div className="flex-1 overflow-y-auto max-h-80 space-y-2 pr-1">
               <div className="flex items-center gap-2">
-              <label className="text-xs font-bold text-ink-500 uppercase">Split method</label>
+                <label className="text-xs font-bold uppercase text-ink-500">Split method</label>
                 <select
                   value={splitType}
                   onChange={(e) => setSplitType(e.target.value as SplitType)}
