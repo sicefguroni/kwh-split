@@ -7,6 +7,8 @@ export type SplitType = "equal" | "percentage" | "shares" | "exact";
 export interface MemberSplitInput {
   selected: boolean;
   amount: string;
+  locked?: boolean;
+  discountType?: "none" | "pwd" | "senior";
 }
 
 export type SplitResult =

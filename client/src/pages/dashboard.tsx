@@ -1,19 +1,26 @@
 import { Plus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueries } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { EmptyGroupsState } from "@/components/dashboard/empty-groups-state";
 import { GroupCard } from "@/components/dashboard/group-card";
 import { AddGroupModal } from "@/components/dashboard/add-group-modal";
 import { useCurrentUser, useLogoutMutation } from "@/features/auth/use-auth";
-import { useOnlineStatus } from "@/hooks/use-persistent-state";
-import { useGroupsState, type GroupData } from "@/hooks/use-groups";
 import {
-  netForMember,
-  readGroupExpensesFromStorage,
-  resolveViewerMemberId,
-} from "@/lib/group-money";
+  useCreateGroupMutation,
+  useDeleteGroupMutation,
+  useGroupsQuery,
+  useJoinGroupMutation,
+  useUpdateGroupMutation,
+} from "@/features/groups/use-groups";
+import { useOnlineStatus } from "@/hooks/use-persistent-state";
+import type { GroupData } from "@/hooks/use-groups";
+import { ApiError } from "@/lib/api-client";
+import { resolveViewerMemberId } from "@/lib/group-money";
+import { expensesApi } from "@/features/expenses/api";
+import type { ApiExpense } from "@/features/expenses/types";
 
 const getFirstName = (fullName: string | undefined): string =>
   fullName?.split(" ")[0] ?? "there";
@@ -26,6 +33,11 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { data: user } = useCurrentUser();
   const logout = useLogoutMutation();
+  const createGroupMutation = useCreateGroupMutation();
+  const updateGroupMutation = useUpdateGroupMutation();
+  const deleteGroupMutation = useDeleteGroupMutation();
+  const joinGroupMutation = useJoinGroupMutation();
+  const { data: apiGroups = [] } = useGroupsQuery();
   const isOnline = useOnlineStatus();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<GroupData | null>(null);
@@ -44,10 +56,70 @@ export default function DashboardPage() {
       return changed ? next : prev;
     });
   }, [user?.name, setGroups, groups.length]);
+  const [actionMessage, setActionMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  const groups: GroupData[] = useMemo(
+    () =>
+      apiGroups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        description: group.description ?? "",
+        currency: group.currency,
+        members: group.members,
+        balance: 0,
+        createdAt: group.createdAt,
+      })),
+    [apiGroups],
+  );
+
+  const expenseQueries = useQueries({
+    queries: groups.map((group) => ({
+      queryKey: ["expenses", group.id],
+      queryFn: async (): Promise<ApiExpense[]> => {
+        const { expenses } = await expensesApi.listByGroup(group.id);
+        return expenses;
+      },
+      enabled: group.id.length > 0,
+    })),
+  });
+
+  const groupsWithBalance: GroupData[] = useMemo(
+    () =>
+      groups.map((group, index) => {
+        const expenses = expenseQueries[index]?.data ?? [];
+        const viewerId = resolveViewerMemberId(group, user?.name, user?.id);
+        if (!viewerId) {
+          return { ...group, balance: 0 };
+        }
+        const net = expenses.reduce((sum, expense) => {
+          const payerId = expense.paidByUserId;
+          if (!payerId) return sum;
+          if (payerId === viewerId) {
+            const othersUnsettled = expense.splits
+              .filter((split) => split.userId !== viewerId && !split.isSettled)
+              .reduce((acc, split) => acc + split.amountOwed, 0);
+            return sum + othersUnsettled;
+          }
+          const viewerSplit = expense.splits.find(
+            (split) => split.userId === viewerId && !split.isSettled,
+          );
+          return sum - (viewerSplit?.amountOwed ?? 0);
+        }, 0);
+
+        return {
+          ...group,
+          balance: Number(net.toFixed(2)),
+        };
+      }),
+    [expenseQueries, groups, user?.id, user?.name],
+  );
 
   const totalBalance = useMemo(
-    () => groups.reduce((sum, group) => sum + group.balance, 0),
-    [groups],
+    () => groupsWithBalance.reduce((sum, group) => sum + group.balance, 0),
+    [groupsWithBalance],
   );
 
   const handleLogout = async (): Promise<void> => {
@@ -64,6 +136,53 @@ export default function DashboardPage() {
 
       return prev.map((item) => (item.id === group.id ? group : item));
     });
+  const handleAddGroup = async (data: AddGroupData) => {
+    try {
+      if (editingGroup) {
+        const updatedGroup = await updateGroupMutation.mutateAsync({
+          id: editingGroup.id,
+          name: data.name,
+          description: data.description,
+          currency: data.currency,
+        });
+        const existingNames = new Set(
+          editingGroup.members.map((member) => member.name.trim().toLowerCase()),
+        );
+        const addedMembers = data.members.filter(
+          (member) => !member.isAdmin && !existingNames.has(member.name.trim().toLowerCase()),
+        );
+        for (const member of addedMembers) {
+          await joinGroupMutation.mutateAsync({
+            id: updatedGroup.id,
+            userName: member.name.trim(),
+          });
+        }
+        setActionMessage({ kind: "success", text: "Group updated." });
+      } else {
+        const createdGroup = await createGroupMutation.mutateAsync({
+          name: data.name,
+          description: data.description,
+          currency: data.currency,
+        });
+        const membersToAdd = data.members.filter((member) => !member.isAdmin);
+        for (const member of membersToAdd) {
+          await joinGroupMutation.mutateAsync({
+            id: createdGroup.id,
+            userName: member.name.trim(),
+          });
+        }
+        setActionMessage({ kind: "success", text: "Group created." });
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setActionMessage({ kind: "error", text: "Session expired. Please log in again." });
+        navigate("/login", { replace: true });
+        return;
+      }
+      const text = error instanceof ApiError ? error.message : "Unable to save group.";
+      setActionMessage({ kind: "error", text });
+      return;
+    }
     setEditingGroup(null);
     setIsAddModalOpen(false);
   };
@@ -81,6 +200,22 @@ export default function DashboardPage() {
   const handleDeleteGroup = (group: GroupData) => {
     setGroups((prev) => prev.filter((item) => item.id !== group.id));
     localStorage.removeItem(`group-expenses-${group.id}`);
+  const handleDeleteGroup = async (group: GroupData) => {
+    const confirmed = window.confirm(`Delete "${group.name}"? This cannot be undone.`);
+    if (!confirmed) return;
+    try {
+      await deleteGroupMutation.mutateAsync({ id: group.id });
+      setActionMessage({ kind: "success", text: "Group deleted." });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setActionMessage({ kind: "error", text: "Session expired. Please log in again." });
+        navigate("/login", { replace: true });
+        return;
+      }
+      const text =
+        error instanceof ApiError ? error.message : "Unable to delete group.";
+      setActionMessage({ kind: "error", text });
+    }
   };
 
   return (
@@ -124,6 +259,28 @@ export default function DashboardPage() {
       </div>
 
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-6 sm:px-6 sm:py-10">
+        {actionMessage ? (
+          <div
+            className={
+              actionMessage.kind === "success"
+                ? "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                : "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            }
+            role="status"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span>{actionMessage.text}</span>
+              <button
+                type="button"
+                className="text-xs font-semibold uppercase tracking-wide opacity-80 hover:opacity-100"
+                onClick={() => setActionMessage(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <section className="flex flex-col gap-4">
           <h2 className="text-base lg:text-lg text-ink-900">Your groups</h2>
 
@@ -137,6 +294,20 @@ export default function DashboardPage() {
                   {...group}
                   onEdit={() => handleOpenEditGroup(group)}
                   onDelete={() => handleDeleteGroup(group)}
+            {groupsWithBalance.length === 0 ? (
+              <EmptyGroupsState onCreate={() => setIsAddModalOpen(true)} />
+            ) : (
+              groupsWithBalance.map((group) => (
+                <GroupCard
+                  key={group.id}
+                  {...group}
+                  onEdit={() => {
+                    setEditingGroup(group);
+                    setIsAddModalOpen(true);
+                  }}
+                  onDelete={() => {
+                    void handleDeleteGroup(group);
+                  }}
                 />
               ))
             )}

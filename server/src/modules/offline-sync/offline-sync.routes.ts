@@ -10,6 +10,7 @@ import { pool } from "../../db/pool.js";
 import { env } from "../../config/env.js";
 import { getAuthenticatedUserId } from "../../middleware/require-auth.js";
 import { badRequest } from "../../utils/errors.js";
+import { broadcastGroupChange } from "../realtime/realtime-hub.js";
 
 const InsertPayloadSchema = z.object({
   id: z.string().uuid(),
@@ -63,6 +64,7 @@ offlineSyncRouter.post("/", async (req: Request, res: Response, next: NextFuncti
     const userId = parseUserId(req);
     const { items } = parsed.data;
     const successIds: string[] = [];
+    const changedGroupIds = new Set<number>();
 
     for (const item of items) {
       try {
@@ -102,9 +104,10 @@ offlineSyncRouter.post("/", async (req: Request, res: Response, next: NextFuncti
           if (insertResult.rows.length === 0) {
             continue;
           }
+          changedGroupIds.add(groupId);
         } else {
           const payload = DeletePayloadSchema.parse(item.payload);
-          const r = await pool.query(
+          const r = await pool.query<{ group_id: number }>(
             `DELETE FROM expenses e
              USING group_members gm
              WHERE e.client_expense_uuid = $1::uuid
@@ -115,11 +118,19 @@ offlineSyncRouter.post("/", async (req: Request, res: Response, next: NextFuncti
           if (r.rowCount === 0) {
             continue;
           }
+          const deletedGroupId = r.rows[0]?.group_id;
+          if (deletedGroupId) {
+            changedGroupIds.add(deletedGroupId);
+          }
         }
         successIds.push(item.id);
       } catch {
         // Skip items that fail validation or authorization (batch continues).
       }
+    }
+
+    for (const groupId of changedGroupIds) {
+      broadcastGroupChange(groupId);
     }
 
     res.json({ success: true, successIds });
