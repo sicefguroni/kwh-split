@@ -21,6 +21,7 @@ export interface PublicUser {
 export interface AuthResult {
   user: PublicUser;
   tokens: { accessToken: string; refreshToken: string };
+  redirectPath?: string | undefined;
 }
 
 interface OAuthStatePayload {
@@ -290,14 +291,30 @@ export const authService = {
 
     const publicUser = toPublicUser(user);
     const tokens = await issueTokens(publicUser.id);
-    return { user: publicUser, tokens };
+    return {
+      user: publicUser,
+      tokens,
+      ...(state.redirectPath ? { redirectPath: state.redirectPath } : {}),
+    };
   },
 
-  buildOAuthResultRedirect(input: { ok: boolean; code?: string }): string {
+  async readRedirectPathFromStateToken(stateToken: string): Promise<string | undefined> {
+    try {
+      const state = await verifyOAuthStateToken(stateToken);
+      return state.redirectPath;
+    } catch {
+      return undefined;
+    }
+  },
+
+  buildOAuthResultRedirect(input: { ok: boolean; code?: string; redirectPath?: string }): string {
     const base = new URL("/oauth/callback", env.WEB_ORIGIN);
     base.searchParams.set("status", input.ok ? "success" : "error");
     if (input.code) {
       base.searchParams.set("code", parseOAuthErrorCode(input.code));
+    }
+    if (input.redirectPath) {
+      base.searchParams.set("redirect", input.redirectPath);
     }
     return base.toString();
   },

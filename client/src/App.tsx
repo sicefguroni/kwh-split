@@ -13,6 +13,7 @@ const SignupPage = lazy(() => import("@/pages/signup"));
 const OauthCallbackPage = lazy(() => import("@/pages/oauth-callback"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const GroupDetailsPage = lazy(() => import("@/pages/group-details"));
+const JoinGroupPage = lazy(() => import("@/pages/join-group"));
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
 
 export function App() {
@@ -33,6 +34,9 @@ export function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/group/:id" element={<GroupDetailsPage />} />
             </Route>
+
+            {/* Public routes that may require auth */}
+            <Route path="/join/:token" element={<JoinGroupPage />} />
 
             <Route path="/404" element={<NotFoundPage />} />
             <Route path="*" element={<Navigate to="/404" replace />} />

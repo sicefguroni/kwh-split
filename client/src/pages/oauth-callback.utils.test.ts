@@ -17,4 +17,9 @@ describe("oauth callback helpers", () => {
     const path = getLoginRedirectForOauthError("Could not verify sign-in request. Please try again.");
     expect(path.startsWith("/login?oauthError=")).toBe(true);
   });
+
+  it("preserves redirect target on oauth error", () => {
+    const path = getLoginRedirectForOauthError("Unable to sign in.", "/join/token-123");
+    expect(path).toContain("redirect=%2Fjoin%2Ftoken-123");
+  });
 });

@@ -1,21 +1,22 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Lock, Mail, ShieldCheck, User } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSignupMutation } from "@/features/auth/use-auth";
-import {
-  SignupFormSchema,
-  type SignupFormValues,
-} from "@/features/auth/schemas";
+import { SignupFormSchema, type SignupFormValues } from "@/features/auth/schemas";
 import { SocialAuthButtons } from "./social-auth-buttons";
 
 export function SignupForm() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const redirectPath = params.get("redirect") || "/dashboard";
+  const inviteEmail = params.get("email") ?? "";
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -27,7 +28,7 @@ export function SignupForm() {
     mode: "onBlur",
     defaultValues: {
       name: "",
-      email: "",
+      email: inviteEmail,
       password: "",
       confirmPassword: "",
     },
@@ -39,7 +40,7 @@ export function SignupForm() {
     setSubmitError(null);
     try {
       await signup.mutateAsync(values);
-      navigate("/dashboard", { replace: true });
+      navigate(redirectPath, { replace: true });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Unable to create account";
@@ -51,7 +52,7 @@ export function SignupForm() {
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <SocialAuthButtons />
+      <SocialAuthButtons redirectPath={redirectPath} />
 
       <div className="flex items-center gap-3 text-xs text-ink-400">
         <span className="h-px flex-1 bg-ink-200" />
@@ -112,7 +113,7 @@ export function SignupForm() {
 
       <Button type="submit" size="lg" fullWidth disabled={busy}>
         {busy ? <Spinner label="Creating account" /> : null}
-        {busy ? "Creating account…" : "Sign up"}
+        {busy ? "Creating account..." : "Sign up"}
       </Button>
     </form>
   );

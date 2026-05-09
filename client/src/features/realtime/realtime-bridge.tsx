@@ -8,6 +8,10 @@ interface RealtimeGroupChangeMessage {
   groupId: string;
 }
 
+interface RealtimeInvitationChangeMessage {
+  type: "invitation-changed";
+}
+
 const buildRealtimeUrl = (): string => {
   const url = new URL("/api/realtime", window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -30,8 +34,18 @@ export function RealtimeUpdatesBridge() {
     let socket: WebSocket | null = null;
 
     const refreshGroup = (groupId: string) => {
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
+      void queryClient.invalidateQueries({ queryKey: ["groups", groupId] });
       void queryClient.invalidateQueries({ queryKey: ["expenses", groupId] });
       void queryClient.invalidateQueries({ queryKey: ["settlements", groupId] });
+      void queryClient.invalidateQueries({ queryKey: ["group-invitations", groupId] });
+      void queryClient.invalidateQueries({ queryKey: ["group-invite-link", groupId] });
+    };
+
+    const refreshInvitations = () => {
+      void queryClient.invalidateQueries({ queryKey: ["incoming-invitations"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["groups"] });
     };
 
     const connect = () => {
@@ -48,9 +62,15 @@ export function RealtimeUpdatesBridge() {
 
       nextSocket.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data as string) as Partial<RealtimeGroupChangeMessage>;
+          const message = JSON.parse(event.data as string) as
+            | Partial<RealtimeGroupChangeMessage>
+            | Partial<RealtimeInvitationChangeMessage>;
           if (message.type === "group-changed" && typeof message.groupId === "string") {
             refreshGroup(message.groupId);
+            return;
+          }
+          if (message.type === "invitation-changed") {
+            refreshInvitations();
           }
         } catch {
           // Ignore malformed push messages.

@@ -1,15 +1,18 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Edit3, MoreVertical, Plus, Trash2, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AddExpenseModal } from "@/components/expenses/add-expense-modal";
-import { EditGroupModal } from "@/components/dashboard/add-group-modal";
+import { EditGroupModal, type GroupFormSubmission } from "@/components/dashboard/add-group-modal";
+import { InviteModal } from "@/components/dashboard/invite-modal";
 import { GroupAvatar, GroupCoverBackground } from "@/components/dashboard/group-media";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
 import { type GroupData, type GroupExpense } from "@/hooks/use-groups";
 import { useCurrentUser } from "@/features/auth/use-auth";
-import { useGroupQuery } from "@/features/groups/use-groups";
+import { groupsApi } from "@/features/groups/api";
+import { useGroupQuery, useUpdateGroupMutation } from "@/features/groups/use-groups";
 import {
   useCreateExpenseMutation,
   useDeleteExpenseMutation,
@@ -20,10 +23,8 @@ import {
   useMarkSettlementPaidMutation,
   useSettlementHistoryQuery,
 } from "@/features/settlements/use-settlements";
-import {
-  resolveViewerMemberId,
-  totalSpent,
-} from "@/lib/group-money";
+import { ApiError } from "@/lib/api-client";
+import { resolveViewerMemberId, totalSpent } from "@/lib/group-money";
 import { cn } from "@/lib/cn";
 
 const EXPENSE_MENU_WIDTH = 152;
@@ -31,17 +32,41 @@ const EXPENSE_MENU_HEIGHT = 96;
 const EXPENSE_MENU_OFFSET = 8;
 const EXPENSE_MENU_MARGIN = 12;
 
+function describeInviteOutcome(
+  baseMessage: string,
+  inviteResult: Awaited<ReturnType<typeof groupsApi.createInvitations>> | null,
+): string {
+  if (!inviteResult) {
+    return baseMessage;
+  }
+  if (inviteResult.created.length === 0 && inviteResult.skipped.length > 0) {
+    return `${baseMessage} No invitations were sent: ${inviteResult.skipped[0]?.reason ?? "all recipients were skipped."}`;
+  }
+  if (inviteResult.created.length > 0 && inviteResult.skipped.length > 0) {
+    return `${baseMessage} ${inviteResult.created.length} invite${inviteResult.created.length === 1 ? "" : "s"} sent, ${inviteResult.skipped.length} skipped.`;
+  }
+  if (inviteResult.created.length > 0) {
+    return `${baseMessage} ${inviteResult.created.length} invite${inviteResult.created.length === 1 ? "" : "s"} sent.`;
+  }
+  return baseMessage;
+}
+
 export default function GroupDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const groupId = id ?? "";
   const { data: apiGroup } = useGroupQuery(groupId);
   const { data: apiExpenses = [] } = useExpensesQuery(groupId);
   const { data: settlementHistory = [] } = useSettlementHistoryQuery(groupId);
+  const { data: user } = useCurrentUser();
   const markPaidMutation = useMarkSettlementPaidMutation(groupId);
   const createExpenseMutation = useCreateExpenseMutation(groupId);
   const updateExpenseMutation = useUpdateExpenseMutation(groupId);
   const deleteExpenseMutation = useDeleteExpenseMutation(groupId);
+  const updateGroupMutation = useUpdateGroupMutation();
+  const isOnline = useOnlineStatus();
+
   const group: GroupData | undefined = useMemo(
     () =>
       apiGroup
@@ -50,13 +75,16 @@ export default function GroupDetailsPage() {
             name: apiGroup.name,
             description: apiGroup.description ?? "",
             currency: apiGroup.currency,
+            imageUrl: apiGroup.imageUrl ?? undefined,
             members: apiGroup.members,
             balance: 0,
             createdAt: apiGroup.createdAt,
+            role: apiGroup.role,
           }
         : undefined,
     [apiGroup],
   );
+
   const expenses: GroupExpense[] = useMemo(
     () =>
       apiExpenses.map((expense) => ({
@@ -79,21 +107,26 @@ export default function GroupDetailsPage() {
       })),
     [apiExpenses, group?.currency],
   );
+
   const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "members">("expenses");
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isEditGroupOpen, setIsEditGroupOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
+  const [groupMessage, setGroupMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
   const [selectedExpense, setSelectedExpense] = useState<GroupExpense | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [swipedId, setSwipedId] = useState<string | null>(null);
-  const touchStartX = useRef<number>(0);
+  const touchStartX = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const isOnline = useOnlineStatus();
-  const { data: user } = useCurrentUser();
 
+  const canManageGroup = apiGroup?.role === "admin";
   const totalSpentValue = useMemo(() => totalSpent(expenses), [expenses]);
-
   const pendingCount = useMemo(() => 0, []);
 
   const viewerNet = useMemo(() => {
@@ -118,6 +151,7 @@ export default function GroupDetailsPage() {
     if (!group) return [];
     const viewerId = resolveViewerMemberId(group, user?.name, user?.id);
     if (!viewerId) return [];
+
     return group.members
       .filter((member) => member.id !== viewerId)
       .map((member) => {
@@ -138,6 +172,7 @@ export default function GroupDetailsPage() {
           }
           return sum;
         }, 0);
+
         return {
           id: member.id,
           name: member.name,
@@ -150,9 +185,9 @@ export default function GroupDetailsPage() {
     const map = new Map<string, GroupExpense[]>();
     for (const expense of expenses) {
       const key = new Date(expense.date).toDateString();
-      const arr = map.get(key) ?? [];
-      arr.push(expense);
-      map.set(key, arr);
+      const items = map.get(key) ?? [];
+      items.push(expense);
+      map.set(key, items);
     }
     return Array.from(map.entries()).map(([date, items]) => ({ date, items }));
   }, [expenses]);
@@ -195,14 +230,13 @@ export default function GroupDetailsPage() {
       }
     };
 
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
+    const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpenMenuId(null);
       }
     };
 
     updateMenuPosition();
-
     window.addEventListener("resize", updateMenuPosition);
     window.addEventListener("scroll", updateMenuPosition, true);
     window.addEventListener("mousedown", handlePointerDown);
@@ -232,9 +266,46 @@ export default function GroupDetailsPage() {
     );
   }
 
-  const handleSaveGroup = (updated: GroupData) => {
-    void updated;
-    setIsEditGroupOpen(false);
+  const handleSaveGroup = async (updated: GroupFormSubmission): Promise<void> => {
+    setIsSavingGroup(true);
+    try {
+      const savedGroup = await updateGroupMutation.mutateAsync({
+        id: group.id,
+        name: updated.name,
+        description: updated.description,
+        currency: updated.currency,
+        imageUrl: updated.imageUrl,
+      });
+
+      const inviteResult =
+        updated.inviteRecipients.length > 0
+          ? await groupsApi.createInvitations(savedGroup.id, {
+              recipients: updated.inviteRecipients.map((recipient) =>
+                recipient.userId
+                  ? { userId: Number(recipient.userId) }
+                  : { email: recipient.email },
+              ),
+            })
+          : null;
+
+      if (inviteResult) {
+        await queryClient.invalidateQueries({ queryKey: ["group-invitations", savedGroup.id] });
+        await queryClient.invalidateQueries({ queryKey: ["incoming-invitations"] });
+      }
+
+      setGroupMessage({
+        kind: "success",
+        text: describeInviteOutcome("Group updated.", inviteResult),
+      });
+      setIsEditGroupOpen(false);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 401) {
+        navigate("/login", { replace: true });
+      }
+      throw cause;
+    } finally {
+      setIsSavingGroup(false);
+    }
   };
 
   const toExpensePayload = (expense: GroupExpense) => ({
@@ -288,14 +359,18 @@ export default function GroupDetailsPage() {
     setOpenMenuId((currentId) => (currentId === expenseId ? null : expenseId));
   };
 
-  const handleTouchStart = (e: React.TouchEvent, expenseId: string) => {
-    if (e.touches.length > 0) touchStartX.current = e.touches[0]!.clientX;
-    if (swipedId && swipedId !== expenseId) setSwipedId(null);
+  const handleTouchStart = (event: React.TouchEvent, expenseId: string) => {
+    if (event.touches.length > 0) {
+      touchStartX.current = event.touches[0]!.clientX;
+    }
+    if (swipedId && swipedId !== expenseId) {
+      setSwipedId(null);
+    }
   };
 
-  const handleTouchEnd = (e: React.TouchEvent, expenseId: string) => {
-    if (e.changedTouches.length === 0) return;
-    const dx = touchStartX.current - e.changedTouches[0]!.clientX;
+  const handleTouchEnd = (event: React.TouchEvent, expenseId: string) => {
+    if (event.changedTouches.length === 0) return;
+    const dx = touchStartX.current - event.changedTouches[0]!.clientX;
     if (dx > 48) setSwipedId(expenseId);
     else if (dx < -24) setSwipedId(null);
   };
@@ -303,13 +378,11 @@ export default function GroupDetailsPage() {
   const openMenuExpense = openMenuId
     ? expenses.find((expense) => expense.id === openMenuId) ?? null
     : null;
-  const handleMarkPaid = async (
-    viewerId: string,
-    otherUserId: string,
-    netOwesYou: number,
-  ) => {
+
+  const handleMarkPaid = async (viewerId: string, otherUserId: string, netOwesYou: number) => {
     const absoluteAmount = Number(Math.abs(netOwesYou).toFixed(2));
     if (absoluteAmount <= 0) return;
+
     if (netOwesYou > 0) {
       await markPaidMutation.mutateAsync({
         fromUserId: Number(otherUserId),
@@ -318,6 +391,7 @@ export default function GroupDetailsPage() {
       });
       return;
     }
+
     await markPaidMutation.mutateAsync({
       fromUserId: Number(viewerId),
       toUserId: Number(otherUserId),
@@ -327,7 +401,6 @@ export default function GroupDetailsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <div className="relative overflow-hidden text-white">
         <GroupCoverBackground
           name={group.name}
@@ -335,10 +408,9 @@ export default function GroupDetailsPage() {
           className="absolute inset-0"
           overlayClassName="bg-linear-to-br from-slate-950/92 via-slate-900/75 to-sky-900/65"
         />
-        <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_35%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_35%)] opacity-40" />
 
-        <div className="relative mx-auto max-w-3xl px-4 pt-6 pb-0">
-          {/* Top bar */}
+        <div className="relative mx-auto max-w-3xl px-4 pb-0 pt-6">
           <div className="flex items-center justify-between">
             <button
               type="button"
@@ -348,31 +420,31 @@ export default function GroupDetailsPage() {
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
+
             <div className="flex items-center gap-2">
-                {!isOnline ? (
-                  <span
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15"
-                    title="Offline"
-                    aria-label="Offline"
-                  >
-                    <WifiOff className="h-4 w-4" aria-hidden />
-                  </span>
-                ) : null}
-              <button
-                type="button"
-                onClick={() => setIsEditGroupOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15 transition hover:bg-white/20"
-                aria-label="Edit group"
-              >
-                <Edit3 className="h-4 w-4" />
-              </button>
+              {!isOnline ? (
+                <span
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15"
+                  title="Offline"
+                  aria-label="Offline"
+                >
+                  <WifiOff className="h-4 w-4" aria-hidden />
+                </span>
+              ) : null}
+              {canManageGroup ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditGroupOpen(true)}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15 transition hover:bg-white/20"
+                  aria-label="Edit group"
+                >
+                  <Edit3 className="h-4 w-4" />
+                </button>
+              ) : null}
             </div>
           </div>
 
-          {/* Group identity — mobile: large image + stacked text + full-width button */}
-          {/* desktop: compact inline row */}
           <div className="mt-5">
-            {/* Shared image + text row */}
             <div className="flex items-center gap-4">
               <GroupAvatar
                 name={group.name}
@@ -380,12 +452,13 @@ export default function GroupDetailsPage() {
                 className="h-24 w-24 flex-shrink-0 rounded-3xl shadow-lg ring-2 ring-white/20 sm:h-16 sm:w-16 sm:rounded-2xl"
                 fallbackClassName="text-lg sm:text-sm"
               />
+
               <div className="min-w-0 flex-1">
-                <h1 className="text-xl lg:2xl font-bold uppercase tracking-wide text-white sm:truncate ">
+                <h1 className="text-xl font-bold uppercase tracking-wide text-white sm:truncate lg:text-2xl">
                   {group.name}
                 </h1>
                 <p className="mt-1 text-sm text-slate-300/80 sm:mt-0.5 sm:text-xs">Group Total</p>
-                <p className="text-xl lg:2xl font-semibold text-white">
+                <p className="text-xl font-semibold text-white lg:text-2xl">
                   {group.currency}
                   {totalSpentValue.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
@@ -393,7 +466,7 @@ export default function GroupDetailsPage() {
                   })}
                 </p>
               </div>
-              {/* Desktop-only inline Add Expense button */}
+
               <div className="hidden flex-shrink-0 sm:block">
                 <Button
                   size="sm"
@@ -408,7 +481,6 @@ export default function GroupDetailsPage() {
               </div>
             </div>
 
-            {/* Mobile-only full-width Add Expense button */}
             <div className="mt-5 sm:hidden">
               <Button
                 className="w-full rounded-full bg-slate-900 py-3 text-sm font-semibold text-white hover:bg-black"
@@ -422,13 +494,12 @@ export default function GroupDetailsPage() {
             </div>
           </div>
 
-          {pendingCount > 0 && (
+          {pendingCount > 0 ? (
             <p className="mt-3 text-xs font-medium text-amber-200/95">
               {pendingCount} item{pendingCount !== 1 ? "s" : ""} not synced yet
             </p>
-          )}
+          ) : null}
 
-          {/* Horizontal tabs */}
           <div className="mt-6 grid grid-cols-3 items-end gap-1">
             {(
               [
@@ -449,35 +520,50 @@ export default function GroupDetailsPage() {
                 )}
               >
                 <span>{tab.label}</span>
-                {tab.count !== null && (
+                {tab.count !== null ? (
                   <span
                     className={cn(
                       "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums sm:text-[10px]",
-                      activeTab === tab.id
-                        ? "bg-white/20 text-white"
-                        : "bg-white/10 text-slate-400",
+                      activeTab === tab.id ? "bg-white/20 text-white" : "bg-white/10 text-slate-400",
                     )}
                   >
                     {tab.count}
                   </span>
-                )}
+                ) : null}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Tab content */}
       <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        {/* EXPENSES */}
-        {activeTab === "expenses" && (
+        {groupMessage ? (
+          <div
+            className={
+              groupMessage.kind === "success"
+                ? "mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+                : "mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            }
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span>{groupMessage.text}</span>
+              <button
+                type="button"
+                className="text-xs font-semibold uppercase tracking-wide opacity-80 hover:opacity-100"
+                onClick={() => setGroupMessage(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === "expenses" ? (
           <div className="space-y-4">
             {expenses.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
                 <p className="text-sm font-semibold text-slate-900">No expenses yet</p>
-                <p className="mt-2 text-sm text-slate-500">
-                  Create an expense and it will be saved locally until it syncs.
-                </p>
+                <p className="mt-2 text-sm text-slate-500">Create an expense and it will be saved locally until it syncs.</p>
                 <div className="mt-5 flex justify-center">
                   <Button
                     onClick={() => {
@@ -492,16 +578,17 @@ export default function GroupDetailsPage() {
             ) : (
               groupedExpenses.map(({ date, items }) => (
                 <div key={date} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  {items.map((expense, idx) => {
-                    const d = new Date(expense.date);
-                    const month = d.toLocaleString(undefined, { month: "short" }).toUpperCase();
-                    const day = d.getDate();
-                    const paidByName = group.members.find((m) => m.id === expense.paidBy)?.name ?? "Unknown";
-                    const vid = resolveViewerMemberId(group, user?.name, user?.id);
-                    const viewerIsPayee = vid === expense.paidBy;
-                    const viewerSplit = vid ? expense.splits.find((s) => s.memberId === vid) : undefined;
-                    const isLast = idx === items.length - 1;
+                  {items.map((expense, index) => {
+                    const expenseDate = new Date(expense.date);
+                    const month = expenseDate.toLocaleString(undefined, { month: "short" }).toUpperCase();
+                    const day = expenseDate.getDate();
+                    const paidByName = group.members.find((member) => member.id === expense.paidBy)?.name ?? "Unknown";
+                    const viewerId = resolveViewerMemberId(group, user?.name, user?.id);
+                    const viewerIsPayee = viewerId === expense.paidBy;
+                    const viewerSplit = viewerId ? expense.splits.find((split) => split.memberId === viewerId) : undefined;
+                    const isLast = index === items.length - 1;
                     const isSwiped = swipedId === expense.id;
+
                     return (
                       <div
                         key={expense.id}
@@ -511,7 +598,6 @@ export default function GroupDetailsPage() {
                           !isLast && "border-b border-slate-100",
                         )}
                       >
-                        {/* Swipe action buttons — mobile only */}
                         <div className="absolute inset-y-0 right-0 flex sm:hidden">
                           <button
                             type="button"
@@ -531,30 +617,30 @@ export default function GroupDetailsPage() {
                           </button>
                         </div>
 
-                        {/* Swipeable card content */}
                         <div
                           className="relative flex items-center gap-4 bg-white px-4 py-3 transition-transform duration-200 ease-out"
                           style={{ transform: isSwiped ? "translateX(-128px)" : "translateX(0)" }}
-                          onTouchStart={(e) => handleTouchStart(e, expense.id)}
-                          onTouchEnd={(e) => handleTouchEnd(e, expense.id)}
+                          onTouchStart={(event) => handleTouchStart(event, expense.id)}
+                          onTouchEnd={(event) => handleTouchEnd(event, expense.id)}
                           onClick={() => isSwiped && setSwipedId(null)}
                         >
-                          {/* Date badge */}
                           <div className="flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-sky-500 text-white">
                             <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">{month}</span>
                             <span className="mt-0.5 text-xl font-bold leading-none">{day}</span>
                           </div>
 
-                          {/* Middle: name + paid by */}
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-semibold text-slate-900">{expense.name}</p>
                             <p className="mt-0.5 text-xs text-slate-500">Paid by {paidByName}</p>
                           </div>
 
-                          {/* Right: amount + your share */}
                           <div className="flex-shrink-0 text-right">
                             <p className="font-bold text-slate-900">
-                              {group.currency}{expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {group.currency}
+                              {expense.amount.toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </p>
                             <p className="mt-0.5 text-xs text-slate-500">
                               your share{" "}
@@ -562,7 +648,11 @@ export default function GroupDetailsPage() {
                                 <span className="font-semibold text-emerald-700">PAID</span>
                               ) : viewerSplit ? (
                                 <span className="font-semibold text-slate-700">
-                                  {group.currency}{viewerSplit.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {group.currency}
+                                  {viewerSplit.amount.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}
                                 </span>
                               ) : (
                                 <span className="font-semibold text-slate-400">—</span>
@@ -570,7 +660,6 @@ export default function GroupDetailsPage() {
                             </p>
                           </div>
 
-                          {/* Three-dot menu — desktop only */}
                           <div className="relative hidden flex-shrink-0 sm:block">
                             <button
                               ref={(node) => {
@@ -586,26 +675,6 @@ export default function GroupDetailsPage() {
                               <MoreVertical className="h-4 w-4" />
                             </button>
                           </div>
-                          {openMenuId === expense.id && (
-                            <div className="absolute right-0 top-9 z-10 min-w-[120px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditExpense(expense)}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                              >
-                                <Edit3 className="h-3.5 w-3.5" /> Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  void handleDeleteExpense(expense.id);
-                                }}
-                                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                              </button>
-                            </div>
-                          )}
                         </div>
                       </div>
                     );
@@ -614,7 +683,7 @@ export default function GroupDetailsPage() {
               ))
             )}
           </div>
-        )}
+        ) : null}
 
         {openMenuExpense && menuPosition && typeof document !== "undefined"
           ? createPortal(
@@ -645,8 +714,7 @@ export default function GroupDetailsPage() {
             )
           : null}
 
-        {/* BALANCES */}
-        {activeTab === "balances" && (
+        {activeTab === "balances" ? (
           <div className="space-y-6">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Your net balance</p>
@@ -671,13 +739,9 @@ export default function GroupDetailsPage() {
               </p>
 
               {balancesWithOthers.length === 0 ? (
-                <p className="mt-4 text-sm text-slate-500">
-                  Add another member to see pairwise balances.
-                </p>
+                <p className="mt-4 text-sm text-slate-500">Add another member to see pairwise balances.</p>
               ) : expenses.length === 0 ? (
-                <p className="mt-4 text-sm text-slate-500">
-                  Add expenses to see how much each member owes you (or you owe them).
-                </p>
+                <p className="mt-4 text-sm text-slate-500">Add expenses to see how much each member owes you.</p>
               ) : (
                 <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-100">
                   <table className="w-full min-w-[280px] text-left text-sm">
@@ -691,13 +755,20 @@ export default function GroupDetailsPage() {
                       {balancesWithOthers.map((row) => {
                         const abs = Math.abs(row.netOwesYou);
                         const settled = abs < 0.005;
-                        const viewerId = group ? resolveViewerMemberId(group, user?.name, user?.id) : undefined;
-                        let label: string;
-                        if (settled) label = "Settled up";
-                        else if (row.netOwesYou > 0)
-                          label = `Owes you ${group.currency} ${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                        else
-                          label = `You owe ${group.currency} ${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        const viewerId = resolveViewerMemberId(group, user?.name, user?.id);
+                        let label = "Settled up";
+                        if (!settled && row.netOwesYou > 0) {
+                          label = `Owes you ${group.currency} ${abs.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}`;
+                        } else if (!settled) {
+                          label = `You owe ${group.currency} ${abs.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}`;
+                        }
+
                         return (
                           <tr key={row.id} className="border-b border-slate-50 last:border-0">
                             <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
@@ -732,10 +803,6 @@ export default function GroupDetailsPage() {
                   </table>
                 </div>
               )}
-              <p className="mt-4 text-xs text-slate-400">
-                Expenses paid by someone else are not split between pairs here—only when you or this
-                member paid.
-              </p>
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -772,26 +839,38 @@ export default function GroupDetailsPage() {
               )}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* MEMBERS */}
-        {activeTab === "members" && (
-          <div className="">
+        {activeTab === "members" ? (
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Members ({group.members.length})</h3>
+              {canManageGroup ? (
+                <Button onClick={() => setIsInviteModalOpen(true)} className="rounded-full" size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Invite
+                </Button>
+              ) : null}
+            </div>
+
             {group.members.map((member) => (
-              <div key={member.id} className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-200 text-sm font-bold text-slate-700">
-                    {member.name.charAt(0)}
+              <div key={member.id} className="mb-3 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-200 text-sm font-bold text-slate-700">
+                      {member.name.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-900">{member.name}</p>
+                      <p className="text-sm text-slate-500">{member.isAdmin ? "Admin" : "Member"}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-slate-900">{member.name}</p>
-                    <p className="text-sm text-slate-500">{member.isAdmin ? "Admin" : "Member"}</p>
-                  </div>
+                  {member.email ? <p className="text-xs text-slate-500">{member.email}</p> : null}
                 </div>
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </main>
 
       <AddExpenseModal
@@ -818,6 +897,14 @@ export default function GroupDetailsPage() {
         onClose={() => setIsEditGroupOpen(false)}
         onSubmit={handleSaveGroup}
         initialData={group}
+        isSubmitting={isSavingGroup}
+      />
+
+      <InviteModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        groupId={groupId}
+        groupName={group.name}
       />
     </div>
   );
