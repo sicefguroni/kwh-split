@@ -29,54 +29,144 @@ function PaymentConfirmationModal({
       />
 
       {/* Centered card */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <div className="w-80 h-64 relative overflow-hidden pointer-events-auto">
-          {/* Card background */}
-          <div className="w-80 h-64 left-0 top-0 absolute bg-white rounded-[10px] border-[0.50px] border-cyan-600" />
-
+      <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div
+          style={{
+            background: "white",
+            borderRadius: "20px",
+            padding: "28px 24px 24px",
+            width: "100%",
+            maxWidth: "340px",
+            boxShadow:
+              "0 0 0 1.5px #c7dff7, 0 8px 32px rgba(80, 140, 220, 0.10), 0 2px 8px rgba(0,0,0,0.06)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "0",
+          }}
+        >
           {/* Header: Member Name paid Payer */}
-          <div className="w-60 h-8 left-[22px] top-[23px] absolute">
-            <span className="text-black text-xs font-bold font-['Plus_Jakarta_Sans']">
-              {memberName}
-            </span>
-            <span className="text-black text-xs font-normal font-['Plus_Jakarta_Sans']">
-              {" "}paid{" "}
-            </span>
-            <span className="text-black text-xs font-bold font-['Plus_Jakarta_Sans']">
-              {payerName}
-            </span>
-          </div>
+          <p
+            style={{
+              fontSize: "15px",
+              color: "#1a1a1a",
+              marginBottom: "18px",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 400,
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontWeight: 700 }}>{memberName}</span>
+            {" paid "}
+            <span style={{ fontWeight: 700 }}>{payerName}</span>
+          </p>
 
-          {/* Amount Paid input box */}
-          <div className="w-52 h-12 px-4 py-3 left-[62px] top-[78px] absolute bg-slate-50 rounded-xl outline outline-1 outline-offset-[-1px] outline-gray-200 inline-flex justify-start items-center gap-4 overflow-hidden">
-            <input
-              type="text"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-48 h-2.5 text-center bg-transparent border-none outline-none text-black text-lg font-semibold font-['Plus_Jakarta_Sans'] focus:ring-0"
-              placeholder={`${currency} 0.00`}
-            />
-          </div>
+         {/* Amount Paid input box */}
+        <div
+        style={{
+        background: "#f2f2f2",
+        borderRadius: "14px",
+        padding: "18px 16px",
+        marginBottom: "18px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center", 
+        width: "100%",
+        }}
+        >
+        <span
+        style={{
+        fontSize: "26px",
+        fontWeight: 700,
+        color: "#1a1a1a",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        letterSpacing: "-0.5px",
+        paddingRight: "2px", // Tightened up slightly to match your image
+        }}
+        >
+        {currency}
+        </span>
+
+        <input
+        type="text"
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        style={{
+        width: `${Math.max(amount?.length || 0, 4)}ch`,
+        background: "transparent",
+        border: "none",
+        outline: "none",
+        textAlign: "left", 
+        fontSize: "26px",
+        fontWeight: 700,
+        color: "#1a1a1a",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        letterSpacing: "-0.5px",
+        }}
+        placeholder="0.00"
+        />
+        </div>
 
           {/* Description text */}
-          <div className="w-60 h-20 left-[53px] top-[126px] absolute text-center justify-center text-black text-xs font-normal font-['Plus_Jakarta_Sans']">
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#555",
+              textAlign: "center",
+              lineHeight: 1.55,
+              marginBottom: "24px",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+            }}
+          >
             You are recording a payment that occurred outside SPLIT.
-          </div>
+          </p>
 
-          {/* Cancel button */}
-          <div className="left-[114px] top-[201px] absolute">
+          {/* Buttons */}
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              justifyContent: "center",
+            }}
+          >
+            {/* Cancel button */}
             <Button
-              className="w-24 h-9 rounded-[50px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] bg-slate-50 text-gray-900 text-base font-medium font-['Plus_Jakarta_Sans'] border-0 hover:bg-slate-100"
+              style={{
+                flex: 1,
+                padding: "13px 0",
+                borderRadius: "999px",
+                border: "none",
+                background: "#ebebeb",
+                color: "#1a1a1a",
+                fontSize: "15px",
+                fontWeight: 600,
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                cursor: "pointer",
+                height: "auto",
+                boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
+              }}
+              className="hover:bg-[#dcdcdc]"
               onClick={onCancel}
             >
               Cancel
             </Button>
-          </div>
 
-          {/* Confirm button */}
-          <div className="left-[222px] top-[201px] absolute">
+            {/* Confirm button */}
             <Button
-              className="w-24 h-9 rounded-[50px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] bg-black text-white text-base font-medium font-['Plus_Jakarta_Sans'] hover:bg-gray-800"
+              style={{
+                flex: 1,
+                padding: "13px 0",
+                borderRadius: "999px",
+                border: "none",
+                background: "#1a1a1a",
+                color: "white",
+                fontSize: "15px",
+                fontWeight: 600,
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                cursor: "pointer",
+                height: "auto",
+                boxShadow: "0px 4px 4px 0px rgba(0,0,0,0.25)",
+              }}
+              className="hover:bg-[#333333]"
               onClick={() => onConfirm(amount)}
             >
               Confirm
