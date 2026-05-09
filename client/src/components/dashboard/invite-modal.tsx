@@ -140,7 +140,7 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <Card className="w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-hidden">
+      <Card className="flex w-full max-w-2xl flex-col h-full max-h-[90vh] overflow-hidden">
         <CardHeader>
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -200,6 +200,8 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
                     type="text"
                     value={currentInviteLink}
                     readOnly
+                    aria-label="Invite link"
+                    title="Invite link"
                     className="flex-1 bg-transparent px-2 text-sm text-slate-700 outline-none"
                   />
                   <Button variant="ghost" size="sm" onClick={() => void copyInviteLink()}>
