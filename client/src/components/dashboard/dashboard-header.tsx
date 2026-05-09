@@ -1,7 +1,6 @@
 import { LogOut, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/logo";
-import { NotificationCenter } from "@/components/dashboard/notification-center";
 
 interface DashboardHeaderProps {
   onLogout: () => void;
@@ -32,7 +31,6 @@ export function DashboardHeader({
               <WifiOff className="h-4 w-4 text-danger" aria-hidden />
             </span>
           ) : null}
-          <NotificationCenter />
           <Button
             variant="ghost"
             size="sm"

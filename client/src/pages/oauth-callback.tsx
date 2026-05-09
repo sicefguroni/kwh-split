@@ -46,7 +46,7 @@ export default function OauthCallbackPage() {
   }, [currentUser, errorMessage, navigate, redirectPath, status]);
 
   return (
-    <main className="flex min-h-[100svh] items-center justify-center px-4">
+    <main className="flex min-h-svh items-center justify-center px-4">
       <Spinner label="Completing sign in" />
     </main>
   );

@@ -10,6 +10,7 @@ import {
 } from "@/features/groups/use-groups";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 
 function formatRelativeDate(value: string): string {
   return new Date(value).toLocaleString();
@@ -17,6 +18,7 @@ function formatRelativeDate(value: string): string {
 
 export function NotificationCenter() {
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const { data: invitations = [] } = useIncomingInvitationsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
   const acceptMutation = useAcceptIncomingInvitationMutation();
@@ -24,15 +26,27 @@ export function NotificationCenter() {
   const markReadMutation = useMarkNotificationsReadMutation();
   const [isOpen, setIsOpen] = useState(false);
   const [error, setError] = useState("");
+  const [deletedInvitationIds, setDeletedInvitationIds] = useState<string[]>([]);
+  const [deletedNotificationIds, setDeletedNotificationIds] = useState<string[]>([]);
+
+  const visibleInvitations = useMemo(
+    () => invitations.filter((invitation) => !deletedInvitationIds.includes(invitation.id)),
+    [invitations, deletedInvitationIds],
+  );
+
+  const visibleNotifications = useMemo(
+    () => notifications.filter((notification) => !deletedNotificationIds.includes(notification.id)),
+    [notifications, deletedNotificationIds],
+  );
 
   const pendingInvitations = useMemo(
-    () => invitations.filter((invitation) => invitation.status === "pending"),
-    [invitations],
+    () => visibleInvitations.filter((invitation) => invitation.status === "pending"),
+    [visibleInvitations],
   );
 
   const unreadNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.isRead),
-    [notifications],
+    () => visibleNotifications.filter((notification) => !notification.isRead),
+    [visibleNotifications],
   );
 
   const badgeCount = pendingInvitations.length + unreadNotifications.length;
@@ -49,7 +63,7 @@ export function NotificationCenter() {
     try {
       setError("");
       const group = await acceptMutation.mutateAsync({ invitationId });
-      setIsOpen(false);
+      // Don't close the panel immediately to show the updated status
       navigate(`/group/${group.id}`);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Unable to accept the invite.");
@@ -60,9 +74,20 @@ export function NotificationCenter() {
     try {
       setError("");
       await declineMutation.mutateAsync({ invitationId });
+      // Don't close the panel to show the updated status
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Unable to decline the invite.");
     }
+  };
+
+  const handleDeleteNotification = (notificationId: string, type: "invitation" | "activity") => {
+    if (type === "invitation") {
+      setDeletedInvitationIds((current) => [...current, notificationId]);
+    } else {
+      setDeletedNotificationIds((current) => [...current, notificationId]);
+    }
+
+    addToast("Notification deleted", "success");
   };
 
   return (
@@ -85,12 +110,12 @@ export function NotificationCenter() {
       </Button>
 
       {isOpen ? (
-        <div className="absolute right-0 top-12 z-40 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
+        <div className="absolute right-0 top-full z-100 mt-2 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
           <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
               <p className="mt-1 text-xs text-slate-500">
-                Live invites plus accept and decline activity from collaborators.
+                Live invites and activity from your collaborators.
               </p>
             </div>
             <button
@@ -114,65 +139,85 @@ export function NotificationCenter() {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Pending invites
+                      Invitations
                     </h4>
                     <p className="mt-1 text-xs text-slate-400">
-                      Invite links sent directly to you.
+                      All invitation activity and status updates.
                     </p>
                   </div>
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                    {pendingInvitations.length}
+                    {visibleInvitations.length}
                   </span>
                 </div>
 
-                {pendingInvitations.length === 0 ? (
+                {visibleInvitations.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                    No pending invites.
+                    No invitations yet.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {pendingInvitations.map((invitation) => (
+                    {visibleInvitations.map((invitation) => (
                       <div
                         key={invitation.id}
                         className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <p className="text-sm font-semibold text-slate-900">
                               {invitation.inviterName} invited you to {invitation.groupName}
                             </p>
                             <p className="mt-1 text-xs text-slate-500">
-                              Expires {formatRelativeDate(invitation.expiresAt)}
+                              {invitation.status === "pending"
+                                ? `Expires ${formatRelativeDate(invitation.expiresAt)}`
+                                : `Updated ${formatRelativeDate(invitation.createdAt)}`}
                             </p>
                           </div>
-                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">
-                            pending
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${invitation.status === "pending"
+                                ? "bg-amber-100 text-amber-800"
+                                : invitation.status === "accepted"
+                                  ? "bg-green-100 text-green-800"
+                                  : invitation.status === "declined"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                            >
+                              {invitation.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNotification(invitation.id, "invitation")}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                              title="Delete notification"
+                              aria-label="Delete invitation notification"
+                            >
+                              ×
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="mt-3 flex gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => {
-                              void handleAccept(invitation.id);
-                            }}
-                            disabled={acceptMutation.isPending || declineMutation.isPending}
-                          >
-                            Accept
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              void handleDecline(invitation.id);
-                            }}
-                            disabled={acceptMutation.isPending || declineMutation.isPending}
-                          >
-                            Decline
-                          </Button>
-                        </div>
+                        {invitation.status === "pending" && (
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => void handleAccept(invitation.id)}
+                              disabled={acceptMutation.isPending || declineMutation.isPending}
+                            >
+                              Accept
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => void handleDecline(invitation.id)}
+                              disabled={acceptMutation.isPending || declineMutation.isPending}
+                            >
+                              Decline
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -183,48 +228,63 @@ export function NotificationCenter() {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Invite activity
+                      Activity
                     </h4>
                     <p className="mt-1 text-xs text-slate-400">
-                      Realtime updates when someone accepts or declines.
+                      Realtime updates when someone accepts or declines invites.
                     </p>
                   </div>
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                    {notifications.length}
+                    {visibleNotifications.length}
                   </span>
                 </div>
 
-                {notifications.length === 0 ? (
+                {visibleNotifications.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                    No invite activity yet.
+                    No activity yet.
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {notifications.map((notification) => (
-                      <button
+                    {visibleNotifications.map((notification) => (
+                      <div
                         key={notification.id}
-                        type="button"
-                        className="block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:bg-slate-50"
-                        onClick={() => {
-                          if (notification.groupId) {
-                            navigate(`/group/${notification.groupId}`);
-                            setIsOpen(false);
-                          }
-                        }}
+                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-900">{notification.title}</p>
-                            <p className="mt-1 text-xs text-slate-500">{notification.message}</p>
+                          <button
+                            type="button"
+                            className="block w-full text-left"
+                            onClick={() => {
+                              if (notification.groupId) {
+                                navigate(`/group/${notification.groupId}`);
+                                setIsOpen(false);
+                              }
+                            }}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-slate-900">{notification.title}</p>
+                              <p className="mt-1 text-xs text-slate-500">{notification.message}</p>
+                            </div>
+                          </button>
+                          <div className="flex items-center gap-2">
+                            {!notification.isRead ? (
+                              <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-500" aria-hidden />
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNotification(notification.id, "activity")}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                              title="Delete notification"
+                              aria-label="Delete activity notification"
+                            >
+                              ×
+                            </button>
                           </div>
-                          {!notification.isRead ? (
-                            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-500" aria-hidden />
-                          ) : null}
                         </div>
                         <p className="mt-3 text-[11px] text-slate-400">
                           {formatRelativeDate(notification.createdAt)}
                         </p>
-                      </button>
+                      </div>
                     ))}
                   </div>
                 )}
