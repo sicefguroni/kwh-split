@@ -24,6 +24,7 @@ export default function JoinGroupPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [invite, setInvite] = useState<ApiInvitePreview | null>(null);
+  const [autoAcceptAttempted, setAutoAcceptAttempted] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -55,6 +56,38 @@ export default function JoinGroupPage() {
       signup: buildAuthTarget("/signup", token, invite?.inviteeEmail),
     };
   }, [invite?.inviteeEmail, token]);
+
+  useEffect(() => {
+    if (!token || !user || !invite || autoAcceptAttempted) {
+      return;
+    }
+
+    const isAcceptable = invite.status === "pending" || invite.status === "available";
+    if (!isAcceptable) {
+      return;
+    }
+
+    setAutoAcceptAttempted(true);
+
+    const acceptInvitation = async () => {
+      try {
+        setSubmitting(true);
+        setError(null);
+        const response = await groupsApi.acceptInviteToken(token);
+        navigate(`/group/${response.group.id}`);
+      } catch (cause) {
+        if (cause instanceof ApiError && cause.status === 401) {
+          navigate(authTargets.login);
+          return;
+        }
+        setError(cause instanceof ApiError ? cause.message : "Failed to accept invitation");
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    void acceptInvitation();
+  }, [autoAcceptAttempted, authTargets.login, invite, navigate, token, user]);
 
   const handleAcceptInvitation = async () => {
     if (!token) return;

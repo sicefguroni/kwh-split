@@ -78,7 +78,7 @@ export function GroupCoverBackground({
         <div className={cn("absolute inset-0", FALLBACK_GRADIENT)} aria-hidden="true">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.28),transparent_34%)]" />
           <div className="absolute -bottom-6 -left-4 h-24 w-24 rounded-full bg-white/12 blur-2xl" />
-          <div className="absolute bottom-5 right-5 flex h-16 w-16 items-center justify-center rounded-[1.75rem] border border-white/20 bg-white/10 text-xl font-semibold uppercase tracking-[0.14em] text-white/90 shadow-lg backdrop-blur-sm">
+          <div className="absolute bottom-5 right-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-xl font-semibold uppercase tracking-[0.14em] text-white/90 shadow-lg backdrop-blur-sm">
             {getGroupInitials(name)}
           </div>
         </div>
