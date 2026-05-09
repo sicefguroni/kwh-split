@@ -16,4 +16,10 @@ describe("SocialAuthButtons", () => {
     startSocialAuth(navigate);
     expect(navigate).toHaveBeenCalledWith("/api/auth/google/start");
   });
+
+  it("builds Google start route with redirect", () => {
+    const navigate = vi.fn();
+    startSocialAuth(navigate, "/join/invite-token");
+    expect(navigate).toHaveBeenCalledWith("/api/auth/google/start?redirect=%2Fjoin%2Finvite-token");
+  });
 });

@@ -16,6 +16,10 @@ interface GroupChangeMessage {
   groupId: string;
 }
 
+interface InvitationChangeMessage {
+  type: "invitation-changed";
+}
+
 const REALTIME_PATH = "/api/realtime";
 
 let realtimeServer: WebSocketServer | null = null;
@@ -72,6 +76,11 @@ const serializeGroupChange = (groupId: number): string =>
     type: "group-changed",
     groupId: String(groupId),
   } satisfies GroupChangeMessage);
+
+const serializeInvitationChange = (): string =>
+  JSON.stringify({
+    type: "invitation-changed",
+  } satisfies InvitationChangeMessage);
 
 async function handleUpgrade(request: IncomingMessage, socket: import("node:net").Socket, head: Buffer): Promise<void> {
   try {
@@ -142,6 +151,23 @@ export function broadcastGroupChange(groupId: number): void {
       continue;
     }
     if (!state.groupIds.has(groupId)) {
+      continue;
+    }
+    socket.send(serialized);
+  }
+}
+
+export function broadcastInvitationChange(userId: number): void {
+  if (!realtimeServer) {
+    return;
+  }
+
+  const serialized = serializeInvitationChange();
+  for (const [socket, state] of connections) {
+    if (socket.readyState !== WebSocket.OPEN) {
+      continue;
+    }
+    if (state.userId !== userId) {
       continue;
     }
     socket.send(serialized);

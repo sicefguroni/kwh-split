@@ -18,6 +18,8 @@ CREATE TABLE groups (
     name VARCHAR(255) NOT NULL,
     description TEXT,
     currency VARCHAR(10) DEFAULT 'USD',
+    image_url TEXT,
+    invite_token VARCHAR(255) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -33,6 +35,43 @@ CREATE TABLE group_members (
     CONSTRAINT fk_group_members_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
     CONSTRAINT fk_group_members_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
     CONSTRAINT unique_group_user UNIQUE(group_id, user_id)
+);
+
+-- Create GROUP_INVITATIONS table
+CREATE TABLE group_invitations (
+    invitation_id SERIAL PRIMARY KEY,
+    group_id INT NOT NULL,
+    inviter_user_id INT NOT NULL,
+    invitee_email VARCHAR(255) NOT NULL,
+    invitee_user_id INT,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, accepted, declined, expired
+    invite_token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_group_invitations_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
+    CONSTRAINT fk_group_invitations_inviter FOREIGN KEY (inviter_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_group_invitations_invitee FOREIGN KEY (invitee_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    CONSTRAINT chk_invitation_status CHECK (status IN ('pending', 'accepted', 'declined', 'expired'))
+);
+
+CREATE TABLE group_notifications (
+    notification_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    actor_user_id INT,
+    group_id INT,
+    invitation_id INT,
+    type VARCHAR(64) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_group_notifications_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_group_notifications_actor FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_group_notifications_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
+    CONSTRAINT fk_group_notifications_invitation FOREIGN KEY (invitation_id) REFERENCES group_invitations(invitation_id) ON DELETE SET NULL,
+    CONSTRAINT chk_group_notification_type CHECK (type IN ('group_invitation_accepted', 'group_invitation_declined'))
 );
 
 -- Create EXPENSERS (Expenses) table
@@ -100,3 +139,13 @@ CREATE INDEX idx_expense_splits_expense ON expense_splits(expense_id);
 CREATE INDEX idx_expense_splits_user ON expense_splits(user_id);
 CREATE INDEX idx_receipt_items_assignments_item ON receipt_items_assignments(item_id);
 CREATE INDEX idx_receipt_items_assignments_user ON receipt_items_assignments(user_id);
+CREATE INDEX idx_groups_invite_token ON groups(invite_token);
+CREATE INDEX idx_group_invitations_group ON group_invitations(group_id);
+CREATE INDEX idx_group_invitations_invitee_email ON group_invitations(invitee_email);
+CREATE INDEX idx_group_invitations_token ON group_invitations(invite_token);
+CREATE INDEX idx_group_invitations_status ON group_invitations(status);
+CREATE INDEX idx_group_invitations_inviter_created_at ON group_invitations(inviter_user_id, created_at DESC);
+CREATE INDEX idx_group_invitations_invitee_user_status ON group_invitations(invitee_user_id, status);
+CREATE INDEX idx_group_invitations_invitee_email_status ON group_invitations((LOWER(invitee_email)), status);
+CREATE INDEX idx_group_notifications_user_created_at ON group_notifications(user_id, created_at DESC);
+CREATE INDEX idx_group_notifications_user_is_read ON group_notifications(user_id, is_read);

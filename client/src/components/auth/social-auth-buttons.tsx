@@ -23,14 +23,28 @@ const GoogleIcon = () => (
 
 export const startSocialAuth = (
   navigate: (url: string) => void = (url) => window.location.assign(url),
+  redirectPath?: string,
 ) => {
-  navigate("/api/auth/google/start");
+  const url = new URL("/api/auth/google/start", window.location.origin);
+  if (redirectPath) {
+    url.searchParams.set("redirect", redirectPath);
+  }
+  navigate(`${url.pathname}${url.search}`);
 };
 
-export function SocialAuthButtons() {
+interface SocialAuthButtonsProps {
+  redirectPath?: string;
+}
+
+export function SocialAuthButtons({ redirectPath }: SocialAuthButtonsProps) {
   return (
     <div className="flex flex-col gap-2">
-      <Button type="button" variant="secondary" fullWidth onClick={() => startSocialAuth()}>
+      <Button
+        type="button"
+        variant="secondary"
+        fullWidth
+        onClick={() => startSocialAuth(undefined, redirectPath)}
+      >
         <GoogleIcon />
         Continue with Google
       </Button>

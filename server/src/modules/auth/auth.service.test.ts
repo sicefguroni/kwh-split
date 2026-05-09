@@ -21,3 +21,13 @@ test("buildOAuthResultRedirect normalizes error code", () => {
   assert.equal(parsed.searchParams.get("status"), "error");
   assert.equal(parsed.searchParams.get("code"), "oauth_google_oauth_not_configured_");
 });
+
+test("buildOAuthResultRedirect preserves redirect path", () => {
+  const url = authService.buildOAuthResultRedirect({
+    ok: true,
+    redirectPath: "/join/invite-token",
+  });
+  const parsed = new URL(url);
+
+  assert.equal(parsed.searchParams.get("redirect"), "/join/invite-token");
+});

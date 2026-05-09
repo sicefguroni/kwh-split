@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Lock, Mail } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,7 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useLoginMutation } from "@/features/auth/use-auth";
-import {
-  LoginFormSchema,
-  type LoginFormValues,
-} from "@/features/auth/schemas";
+import { LoginFormSchema, type LoginFormValues } from "@/features/auth/schemas";
 import { SocialAuthButtons } from "./social-auth-buttons";
 
 interface LocationState {
@@ -21,8 +18,12 @@ interface LocationState {
 export function LoginForm() {
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as LocationState | null)?.from?.pathname ?? "/dashboard";
-  const oauthError = new URLSearchParams(location.search).get("oauthError");
+  const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const redirectFromState = (location.state as LocationState | null)?.from?.pathname;
+  const redirectFromQuery = params.get("redirect");
+  const from = redirectFromQuery || redirectFromState || "/dashboard";
+  const oauthError = params.get("oauthError");
+  const inviteEmail = params.get("email") ?? "";
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -33,7 +34,7 @@ export function LoginForm() {
   } = useForm<LoginFormValues>({
     resolver: zodResolver(LoginFormSchema),
     mode: "onBlur",
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: inviteEmail, password: "" },
   });
 
   const login = useLoginMutation();
@@ -54,7 +55,7 @@ export function LoginForm() {
 
   return (
     <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
-      <SocialAuthButtons />
+      <SocialAuthButtons redirectPath={from} />
 
       <div className="flex items-center gap-3 text-xs text-ink-400">
         <span className="h-px flex-1 bg-ink-200" />
@@ -103,7 +104,7 @@ export function LoginForm() {
 
       <Button type="submit" size="lg" fullWidth disabled={busy}>
         {busy ? <Spinner label="Signing in" /> : null}
-        {busy ? "Signing in…" : "Log in"}
+        {busy ? "Signing in..." : "Log in"}
       </Button>
     </form>
   );
