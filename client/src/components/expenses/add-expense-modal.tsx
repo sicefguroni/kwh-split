@@ -8,13 +8,6 @@ import { cn } from "@/lib/cn";
 import { type AddExpenseModalProps, type MemberSplitInput, type SplitType } from "./types";
 import { useExpenseForm } from "./use-expense-form";
 
-const SPLIT_TYPE_OPTIONS = [
-  { label: "Split equally", value: "equal" },
-  { label: "Split by percentage", value: "percentage" },
-  { label: "Split by shares", value: "shares" },
-  { label: "Split by exact amounts", value: "exact" },
-] as const satisfies ReadonlyArray<{ label: string; value: SplitType }>;
-
 // =============================================================================
 // Component
 // =============================================================================
@@ -224,15 +217,6 @@ export function AddExpenseModal({
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#0074B7]" />
               </div>
 
-              {/* Split type */}
-              <Select
-                value={splitType}
-                onValueChange={(value) => setSplitType(value as SplitType)}
-                options={[...SPLIT_TYPE_OPTIONS]}
-                ariaLabel="Split type"
-                triggerClassName="border-0 bg-white text-ink-900 focus:ring-[#0074B7]/20"
-                menuClassName="border-mint-200"
-              />
               <label className="text-xs font-semibold uppercase tracking-wide text-ink-500 px-1">
                 Note
               </label>

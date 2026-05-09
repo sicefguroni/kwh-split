@@ -95,6 +95,9 @@ export default function GroupDetailsPage() {
         paidBy: expense.paidByUserId ?? "",
         date: expense.saleDate,
         note: "",
+        ...(expense.splitType && {
+          splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
+        }),
         splits: expense.splits.map((split) => ({
           memberId: split.userId,
           amount: split.amountOwed,
@@ -316,7 +319,7 @@ export default function GroupDetailsPage() {
     saleDate: expense.date,
     taxAmount: 0,
     tipAmount: 0,
-    splitType: "exact" as const,
+    splitType: (expense.splitType ?? "exact") as "equal" | "percentage" | "shares" | "exact" | "itemized",
     participantUserIds: expense.splits.map((split) => Number(split.memberId)),
     splits: expense.splits.map((split) => ({
       userId: Number(split.memberId),
@@ -618,11 +621,29 @@ export default function GroupDetailsPage() {
                         </div>
 
                         <div
-                          className="relative flex items-center gap-4 bg-white px-4 py-3 transition-transform duration-200 ease-out"
+                          role="button"
+                          tabIndex={0}
+                          className="relative flex items-center gap-4 bg-white px-4 py-3 transition-all duration-200 ease-out hover:bg-slate-50 cursor-pointer"
                           style={{ transform: isSwiped ? "translateX(-128px)" : "translateX(0)" }}
                           onTouchStart={(event) => handleTouchStart(event, expense.id)}
                           onTouchEnd={(event) => handleTouchEnd(event, expense.id)}
-                          onClick={() => isSwiped && setSwipedId(null)}
+                          onClick={(event) => {
+                            // Prevent navigation if clicking on menu button or if swiped
+                            const target = event.target as HTMLElement;
+                            if (isSwiped || target.closest("button")) {
+                              if (isSwiped && !target.closest("button")) {
+                                setSwipedId(null);
+                              }
+                              return;
+                            }
+                            navigate(`/group/${groupId}/expense/${expense.id}`);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              navigate(`/group/${groupId}/expense/${expense.id}`);
+                            }
+                          }}
                         >
                           <div className="flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-sky-500 text-white">
                             <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">{month}</span>
