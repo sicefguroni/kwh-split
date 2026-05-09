@@ -156,12 +156,12 @@ export default function DashboardPage() {
         const inviteResult =
           group.inviteRecipients.length > 0
             ? await groupsApi.createInvitations(updatedGroup.id, {
-                recipients: group.inviteRecipients.map((recipient) =>
-                  recipient.userId
-                    ? { userId: Number(recipient.userId) }
-                    : { email: recipient.email },
-                ),
-              })
+              recipients: group.inviteRecipients.map((recipient) =>
+                recipient.userId
+                  ? { userId: Number(recipient.userId) }
+                  : { email: recipient.email },
+              ),
+            })
             : null;
 
         if (inviteResult) {
@@ -184,12 +184,12 @@ export default function DashboardPage() {
         const inviteResult =
           group.inviteRecipients.length > 0
             ? await groupsApi.createInvitations(createdGroup.id, {
-                recipients: group.inviteRecipients.map((recipient) =>
-                  recipient.userId
-                    ? { userId: Number(recipient.userId) }
-                    : { email: recipient.email },
-                ),
-              })
+              recipients: group.inviteRecipients.map((recipient) =>
+                recipient.userId
+                  ? { userId: Number(recipient.userId) }
+                  : { email: recipient.email },
+              ),
+            })
             : null;
 
         if (inviteResult) {
@@ -314,8 +314,8 @@ export default function DashboardPage() {
                   onDelete={
                     group.role === "admin"
                       ? () => {
-                          void handleDeleteGroup(group);
-                        }
+                        void handleDeleteGroup(group);
+                      }
                       : undefined
                   }
                 />
