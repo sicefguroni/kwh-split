@@ -148,10 +148,11 @@ export const authController = {
         error instanceof Error && "code" in error && typeof error.code === "string"
           ? error.code
           : "oauth_start_failed";
+      const redirectPath = parseRedirectPath(req.query.redirect);
       res.redirect(authService.buildOAuthResultRedirect({
         ok: false,
         code,
-        redirectPath: parseRedirectPath(req.query.redirect),
+        ...(redirectPath ? { redirectPath } : {}),
       }));
     }
   },

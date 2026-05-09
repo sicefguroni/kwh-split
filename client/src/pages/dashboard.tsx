@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AddGroupModal, type GroupFormSubmission } from "@/components/dashboard/add-group-modal";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { DashboardNavbar } from "@/components/dashboard/dashboard-navbar";
 import { EmptyGroupsState } from "@/components/dashboard/empty-groups-state";
 import { GroupCard } from "@/components/dashboard/group-card";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,7 @@ export default function DashboardPage() {
     kind: "success" | "error";
     text: string;
   } | null>(null);
+  const [deletedGroupNotification, setDeletedGroupNotification] = useState<string | null>(null);
 
   const groups: GroupData[] = useMemo(
     () =>
@@ -154,12 +156,12 @@ export default function DashboardPage() {
         const inviteResult =
           group.inviteRecipients.length > 0
             ? await groupsApi.createInvitations(updatedGroup.id, {
-                recipients: group.inviteRecipients.map((recipient) =>
-                  recipient.userId
-                    ? { userId: Number(recipient.userId) }
-                    : { email: recipient.email },
-                ),
-              })
+              recipients: group.inviteRecipients.map((recipient) =>
+                recipient.userId
+                  ? { userId: Number(recipient.userId) }
+                  : { email: recipient.email },
+              ),
+            })
             : null;
 
         if (inviteResult) {
@@ -182,12 +184,12 @@ export default function DashboardPage() {
         const inviteResult =
           group.inviteRecipients.length > 0
             ? await groupsApi.createInvitations(createdGroup.id, {
-                recipients: group.inviteRecipients.map((recipient) =>
-                  recipient.userId
-                    ? { userId: Number(recipient.userId) }
-                    : { email: recipient.email },
-                ),
-              })
+              recipients: group.inviteRecipients.map((recipient) =>
+                recipient.userId
+                  ? { userId: Number(recipient.userId) }
+                  : { email: recipient.email },
+              ),
+            })
             : null;
 
         if (inviteResult) {
@@ -226,12 +228,12 @@ export default function DashboardPage() {
   };
 
   const handleDeleteGroup = async (group: GroupData): Promise<void> => {
-    const confirmed = window.confirm(`Delete \"${group.name}\"? This cannot be undone.`);
+    const confirmed = window.confirm(`Delete "${group.name}"? This cannot be undone.`);
     if (!confirmed) return;
 
     try {
       await deleteGroupMutation.mutateAsync({ id: group.id });
-      setActionMessage({ kind: "success", text: "Group deleted." });
+      setDeletedGroupNotification(`Group "${group.name}" deleted.`);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
         setActionMessage({ kind: "error", text: "Session expired. Please log in again." });
@@ -252,6 +254,13 @@ export default function DashboardPage() {
         onLogout={handleLogout}
         isLoggingOut={logout.isPending}
         isOnline={isOnline}
+      />
+
+      <DashboardNavbar
+        actionMessage={actionMessage}
+        onDismissAction={() => setActionMessage(null)}
+        deletedGroupNotification={deletedGroupNotification}
+        onDismissDeletedNotification={() => setDeletedGroupNotification(null)}
       />
 
       <div className="relative overflow-hidden pt-4 text-white lg:pt-8">
@@ -286,28 +295,6 @@ export default function DashboardPage() {
       </div>
 
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-6 sm:px-6 sm:py-10">
-        {actionMessage ? (
-          <div
-            className={
-              actionMessage.kind === "success"
-                ? "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-                : "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-            }
-            role="status"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span>{actionMessage.text}</span>
-              <button
-                type="button"
-                className="text-xs font-semibold uppercase tracking-wide opacity-80 hover:opacity-100"
-                onClick={() => setActionMessage(null)}
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <section className="flex flex-col gap-4">
           <h2 className="text-base text-ink-900 lg:text-lg">Your groups</h2>
 
@@ -327,8 +314,8 @@ export default function DashboardPage() {
                   onDelete={
                     group.role === "admin"
                       ? () => {
-                          void handleDeleteGroup(group);
-                        }
+                        void handleDeleteGroup(group);
+                      }
                       : undefined
                   }
                 />
