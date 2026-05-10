@@ -71,16 +71,16 @@ export default function GroupDetailsPage() {
     () =>
       apiGroup
         ? {
-            id: apiGroup.id,
-            name: apiGroup.name,
-            description: apiGroup.description ?? "",
-            currency: apiGroup.currency,
-            imageUrl: apiGroup.imageUrl ?? undefined,
-            members: apiGroup.members,
-            balance: 0,
-            createdAt: apiGroup.createdAt,
-            role: apiGroup.role,
-          }
+          id: apiGroup.id,
+          name: apiGroup.name,
+          description: apiGroup.description ?? "",
+          currency: apiGroup.currency,
+          imageUrl: apiGroup.imageUrl ?? undefined,
+          members: apiGroup.members,
+          balance: 0,
+          createdAt: apiGroup.createdAt,
+          role: apiGroup.role,
+        }
         : undefined,
     [apiGroup],
   );
@@ -214,9 +214,9 @@ export default function GroupDetailsPage() {
       const top = openUpward
         ? Math.max(EXPENSE_MENU_MARGIN, rect.top - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_OFFSET)
         : Math.min(
-            rect.bottom + EXPENSE_MENU_OFFSET,
-            window.innerHeight - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_MARGIN,
-          );
+          rect.bottom + EXPENSE_MENU_OFFSET,
+          window.innerHeight - EXPENSE_MENU_HEIGHT - EXPENSE_MENU_MARGIN,
+        );
       const left = Math.min(
         Math.max(EXPENSE_MENU_MARGIN, rect.right - EXPENSE_MENU_WIDTH),
         window.innerWidth - EXPENSE_MENU_WIDTH - EXPENSE_MENU_MARGIN,
@@ -283,12 +283,12 @@ export default function GroupDetailsPage() {
       const inviteResult =
         updated.inviteRecipients.length > 0
           ? await groupsApi.createInvitations(savedGroup.id, {
-              recipients: updated.inviteRecipients.map((recipient) =>
-                recipient.userId
-                  ? { userId: Number(recipient.userId) }
-                  : { email: recipient.email },
-              ),
-            })
+            recipients: updated.inviteRecipients.map((recipient) =>
+              recipient.userId
+                ? { userId: Number(recipient.userId) }
+                : { email: recipient.email },
+            ),
+          })
           : null;
 
       if (inviteResult) {
@@ -708,31 +708,31 @@ export default function GroupDetailsPage() {
 
         {openMenuExpense && menuPosition && typeof document !== "undefined"
           ? createPortal(
-              <div
-                ref={menuRef}
-                className="fixed z-30 min-w-[152px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
-                style={{ top: menuPosition.top, left: menuPosition.left }}
-                role="menu"
+            <div
+              ref={menuRef}
+              className="fixed z-30 min-w-[152px] rounded-2xl border border-slate-200 bg-white py-1 shadow-lg"
+              style={{ top: menuPosition.top, left: menuPosition.left }}
+              role="menu"
+            >
+              <button
+                type="button"
+                onClick={() => handleOpenEditExpense(openMenuExpense)}
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                role="menuitem"
               >
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditExpense(openMenuExpense)}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                  role="menuitem"
-                >
-                  <Edit3 className="h-3.5 w-3.5" /> Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteExpense(openMenuExpense.id)}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                  role="menuitem"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </button>
-              </div>,
-              document.body,
-            )
+                <Edit3 className="h-3.5 w-3.5" /> Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteExpense(openMenuExpense.id)}
+                className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                role="menuitem"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            </div>,
+            document.body,
+          )
           : null}
 
         {activeTab === "balances" ? (
