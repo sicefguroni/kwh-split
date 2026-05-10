@@ -45,7 +45,7 @@ export default function ExpenseDetailsPage() {
         currency: group?.currency ?? "₱",
         paidBy: expense.paidByUserId ?? "",
         date: expense.saleDate,
-        note: "",
+        note: expense.note ??"",
         ...(expense.splitType && {
           splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
         }),
@@ -202,7 +202,7 @@ export default function ExpenseDetailsPage() {
       <main className="mx-auto max-w-3xl px-4 py-8">
         {/* Expense Detail Section */}
         <div className="mb-8">
-          <div className="rounded-3xl bg-white p-8 shadow-sm text-center">
+          <div className="rounded-3xl bg-white p-8 shadow-[0px_4px_50px_4px_rgba(208,238,240,1.00)] text-center">
 
             {/* Expense Name */}
             <h2 className="text-2xl font-bold text-ink-900 mb-4">{expense.name}</h2>
@@ -237,7 +237,7 @@ export default function ExpenseDetailsPage() {
                {/* Notes */}
                 <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
                 <span className="text-sm text-ink-500 font-medium">Notes</span>
-                <span className="text-sm font-semibold text-ink-500">{expense.note || "-"}</span>
+                <span className="text-sm font-semibold text-ink-500">{expense.note}</span>
                 </div>
             </div>
           </div>
