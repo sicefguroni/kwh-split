@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ export default function ExpenseDetailsPage() {
         currency: group?.currency ?? "₱",
         paidBy: expense.paidByUserId ?? "",
         date: expense.saleDate,
-        note: expense.note ?? "",
+        note: "",
         ...(expense.splitType && {
           splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
         }),
@@ -78,10 +78,12 @@ export default function ExpenseDetailsPage() {
     
     return expense.splits.map((split) => {
       const member = group.members.find((m) => m.id === split.memberId);
+      const discount = expense.memberDiscounts?.find((d) => d.memberId === split.memberId);
       return {
         memberId: split.memberId,
         memberName: member?.name ?? "Unknown",
         amount: split.amount,
+        discountType: discount?.type ?? "none",
       };
     });
   }, [expense, group]);
@@ -98,8 +100,20 @@ export default function ExpenseDetailsPage() {
 
   const [paidAmounts, setPaidAmounts] = useState<Record<string, number>>({});
 
+  // Capture each member's original split amount the first time we see a non-zero value.
+  // The server returns amountOwed = 0 once fully paid, so we must snapshot it early.
+  const originalAmountsRef = useRef<Record<string, number>>({});
+  if (expense) {
+    expense.splits.forEach((split) => {
+      const key = String(split.memberId);
+      if (originalAmountsRef.current[key] === undefined && split.amount > 0) {
+        originalAmountsRef.current[key] = split.amount;
+      }
+    });
+  }
+
   const openPaymentModal = (payerMemberId: string) => {
-    setPaymentModal({ isOpen: true, payerMemberId });
+    setPaymentModal({ isOpen: true, payerMemberId: String(payerMemberId) });
   };
 
   const closePaymentModal = () => {
@@ -122,7 +136,7 @@ export default function ExpenseDetailsPage() {
     
     setPaidAmounts((prev) => ({
       ...prev,
-      [payerMemberId]: (prev[payerMemberId] ?? 0) + splitAmount,
+      [String(payerMemberId)]: (prev[String(payerMemberId)] ?? 0) + splitAmount,
     }));
     
     closePaymentModal();
@@ -158,6 +172,14 @@ export default function ExpenseDetailsPage() {
 
   const expenseDate = new Date(expense.date);
   const formattedDate = expenseDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+  const modalMemberSplit = paymentModal.payerMemberId
+    ? expense.splits.find((s) => s.memberId === paymentModal.payerMemberId)
+    : null;
+  const modalAmountPaid = paymentModal.payerMemberId
+    ? (paidAmounts[String(paymentModal.payerMemberId)] ?? 0)
+    : 0;
+  const modalRemainingAmount = Math.max(0, (modalMemberSplit?.amount ?? 0) - modalAmountPaid);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -226,28 +248,35 @@ export default function ExpenseDetailsPage() {
           <h3 className="text-lg font-semibold text-ink-900 mb-4 uppercase tracking-wide">Individual Splits</h3>
           <div className="space-y-3">
             {memberSplits.map((split) => {
-              const amountPaidForMember = paidAmounts[split.memberId] ?? 0;
+              const amountPaidForMember = paidAmounts[String(split.memberId)] ?? 0;
               const remainingAmount = Math.max(0, split.amount - amountPaidForMember);
-              const isFullyPaid = amountPaidForMember >= split.amount;
+              const isFullyPaid = remainingAmount === 0;
 
               return (
                 <div
                   key={split.memberId}
                   className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                 >
-                  {/* Left: Avatar + Name */}
+                  {/* Left: Avatar + Name/Discount */}
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-200 text-sm font-bold text-slate-700">
                       {split.memberName.charAt(0).toUpperCase()}
                     </div>
-                    <span className="truncate font-semibold text-ink-900">{split.memberName}</span>
+                    <div className="flex flex-col md:flex-row md:items-center md:gap-2 min-w-0 ">
+                      <span className="truncate font-semibold text-ink-900">{split.memberName}</span>
+                      {split.discountType !== "none" && (
+                        <div className=" text-emerald-400 text-xs font-semibold font-['Sans Serif'] whitespace-nowrap">
+                          {split.discountType === "pwd" ? "PWD DISCOUNT" : "SC DISCOUNT"}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Right: Amount + Button */}
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <div className="text-right">
                       <p className="text-base font-bold text-ink-900">
-                        {expense.currency}{(isFullyPaid ? split.amount : remainingAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {expense.currency}{(isFullyPaid ? (originalAmountsRef.current[String(split.memberId)] ?? split.amount) : remainingAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                     {split.memberId === expense.paidBy && (
@@ -283,12 +312,8 @@ export default function ExpenseDetailsPage() {
         <PaymentConfirmationModal
           memberName={group.members.find((m) => m.id === paymentModal.payerMemberId)?.name ?? "Unknown"}
           payerName={paidByMember?.name ?? "Unknown"}
-          initialAmount={(() => {
-            const memberSplit = expense.splits.find((s) => s.memberId === paymentModal.payerMemberId);
-            const amountPaid = paidAmounts[paymentModal.payerMemberId] ?? 0;
-            const remaining = Math.max(0, (memberSplit?.amount ?? 0) - amountPaid);
-            return remaining.toFixed(2);
-          })()}
+          initialAmount={modalRemainingAmount.toFixed(2)}
+          maxAmount={modalRemainingAmount.toFixed(2)}
           currency={group.currency}
           onConfirm={handleConfirmPayment}
           onCancel={closePaymentModal}
