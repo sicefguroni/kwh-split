@@ -94,7 +94,7 @@ export interface InvitationsResponse {
   invitations: ApiGroupInvitation[];
 }
 
-export interface InvitationBatchResponse extends ApiInvitationBatchResult {}
+export type InvitationBatchResponse = ApiInvitationBatchResult;
 
 export interface InviteLinkResponse {
   inviteToken: string | null;
