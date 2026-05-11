@@ -18,7 +18,7 @@ export function AuthLayout({
     <main className="flex min-h-[100svh] items-center justify-center px-4 py-10 sm:py-16">
       <section className="w-full max-w-md">
         <header className="mb-6 flex flex-col items-center text-center">
-          <Logo size="lg" className="mb-5 h-[5.5rem] w-auto sm:h-[6.5rem]" />
+          <Logo size="lg" className="mb-5 h-[3.5rem] w-auto sm:h-[3rem]" />
           <h1 className="text-2xl font-semibold text-ink-900">{title}</h1>
           {subtitle ? (
             <p className="mt-1 text-sm text-ink-500">{subtitle}</p>
