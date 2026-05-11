@@ -13,6 +13,7 @@ const LoginPage = lazy(() => import("@/pages/login"));
 const SignupPage = lazy(() => import("@/pages/signup"));
 const OauthCallbackPage = lazy(() => import("@/pages/oauth-callback"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const ProfilePage = lazy(() => import("@/pages/profile"));
 const ExpenseDetailsPage = lazy(() => import("@/pages/expense-details"));
 const GroupDetailsPage = lazy(() => import("@/pages/group-details"));
 const JoinGroupPage = lazy(() => import("@/pages/join-group"));
@@ -35,6 +36,7 @@ export function App() {
 
             <Route element={<ProtectedRoute />}>
               <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               <Route path="/group/:groupId/expense/:expenseId" element={<ExpenseDetailsPage />} />
               <Route path="/group/:id" element={<GroupDetailsPage />} />
             </Route>
