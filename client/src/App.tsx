@@ -13,6 +13,8 @@ const LoginPage = lazy(() => import("@/pages/login"));
 const SignupPage = lazy(() => import("@/pages/signup"));
 const OauthCallbackPage = lazy(() => import("@/pages/oauth-callback"));
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const ProfilePage = lazy(() => import("@/pages/profile"));
+const ExpenseDetailsPage = lazy(() => import("@/pages/expense-details"));
 const GroupDetailsPage = lazy(() => import("@/pages/group-details"));
 const JoinGroupPage = lazy(() => import("@/pages/join-group"));
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
@@ -32,10 +34,12 @@ export function App() {
                 <Route path="/oauth/callback" element={<OauthCallbackPage />} />
               </Route>
 
-              <Route element={<ProtectedRoute />}>
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/group/:id" element={<GroupDetailsPage />} />
-              </Route>
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/group/:groupId/expense/:expenseId" element={<ExpenseDetailsPage />} />
+              <Route path="/group/:id" element={<GroupDetailsPage />} />
+            </Route>
 
               {/* Public routes that may require auth */}
               <Route path="/join/:token" element={<JoinGroupPage />} />
