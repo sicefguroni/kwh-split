@@ -157,71 +157,75 @@ export function InviteRecipientPicker({
         <p className="mt-1 text-xs text-slate-500">{description}</p>
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            value={draft}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              if (error) {
-                setError("");
-              }
-            }}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") {
-                return;
-              }
-              event.preventDefault();
-              handleAddDraft();
-            }}
-            placeholder="friend@example.com, or search a collaborator"
-            className="h-12 pl-10"
-            disabled={disabled}
-          />
+      <div className="relative">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                if (error) {
+                  setError("");
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") {
+                  return;
+                }
+                event.preventDefault();
+                handleAddDraft();
+              }}
+              placeholder="friend@example.com, or search a collaborator"
+              className="h-12 pl-10"
+              disabled={disabled}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="justify-center"
+            onClick={handleAddDraft}
+            disabled={disabled || draft.trim().length === 0}
+          >
+            <UserPlus className="h-4 w-4" /> Add
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="secondary"
-          className="justify-center"
-          onClick={handleAddDraft}
-          disabled={disabled || draft.trim().length === 0}
-        >
-          <UserPlus className="h-4 w-4" /> Add
-        </Button>
+
+        {availableCollaborators.length > 0 ? (
+          <div className="absolute left-0 right-0 top-full z-10 mt-1 space-y-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
+            {availableCollaborators.slice(0, 5).map((suggestion) => (
+              <button
+                key={suggestion.userId}
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left transition hover:bg-slate-50"
+                onClick={() => {
+                  appendRecipients([createUserRecipient(suggestion)]);
+                  setDraft("");
+                  setError("");
+                }}
+                disabled={disabled}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">{suggestion.name}</p>
+                  <p className="truncate text-xs text-slate-500">{suggestion.email}</p>
+                </div>
+                <span className="ml-3 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                  {suggestion.mutualGroups} shared
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
-      {error ? (
-        <p className="text-xs text-red-600">{error}</p>
-      ) : isFetching ? (
-        <p className="text-xs text-slate-500">Looking up collaborators...</p>
-      ) : null}
-
-      {availableCollaborators.length > 0 ? (
-        <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-2">
-          {availableCollaborators.slice(0, 5).map((suggestion) => (
-            <button
-              key={suggestion.userId}
-              type="button"
-              className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left transition hover:bg-slate-50"
-              onClick={() => {
-                appendRecipients([createUserRecipient(suggestion)]);
-                setDraft("");
-                setError("");
-              }}
-              disabled={disabled}
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-900">{suggestion.name}</p>
-                <p className="truncate text-xs text-slate-500">{suggestion.email}</p>
-              </div>
-              <span className="ml-3 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
-                {suggestion.mutualGroups} shared
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <div className="">
+        {error ? (
+          <p className="text-xs text-red-600">{error}</p>
+        ) : isFetching ? (
+          <p className=""></p>
+        ) : null}
+      </div>
 
       {recipients.length > 0 ? (
         <div className="flex flex-wrap gap-2">
