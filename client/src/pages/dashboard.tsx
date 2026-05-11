@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { AddGroupModal, type GroupFormSubmission } from "@/components/dashboard/add-group-modal";
+import { AddGroupModal, EditGroupModal, type GroupFormSubmission } from "@/components/dashboard/add-group-modal";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
-import { DashboardNavbar } from "@/components/dashboard/dashboard-navbar";
 import { EmptyGroupsState } from "@/components/dashboard/empty-groups-state";
 import { GroupCard } from "@/components/dashboard/group-card";
 import { Button } from "@/components/ui/button";
@@ -254,9 +253,6 @@ export default function DashboardPage() {
         onLogout={handleLogout}
         isLoggingOut={logout.isPending}
         isOnline={isOnline}
-      />
-
-      <DashboardNavbar
         actionMessage={actionMessage}
         onDismissAction={() => setActionMessage(null)}
         deletedGroupNotification={deletedGroupNotification}
@@ -325,18 +321,32 @@ export default function DashboardPage() {
         </section>
       </main>
 
-      <AddGroupModal
-        isOpen={isAddModalOpen}
-        onClose={() => {
-          setEditingGroup(null);
-          setIsAddModalOpen(false);
-        }}
-        onSubmit={(group) => {
-          return handleSaveGroup(group);
-        }}
-        {...(editingGroup ? { initialData: editingGroup } : {})}
-        isSubmitting={isSavingGroup}
-      />
+      {editingGroup ? (
+        <EditGroupModal
+          isOpen={isAddModalOpen}
+          onClose={() => {
+            setEditingGroup(null);
+            setIsAddModalOpen(false);
+          }}
+          onSubmit={(group) => {
+            return handleSaveGroup(group);
+          }}
+          initialData={editingGroup}
+          isSubmitting={isSavingGroup}
+        />
+      ) : (
+        <AddGroupModal
+          isOpen={isAddModalOpen}
+          onClose={() => {
+            setEditingGroup(null);
+            setIsAddModalOpen(false);
+          }}
+          onSubmit={(group) => {
+            return handleSaveGroup(group);
+          }}
+          isSubmitting={isSavingGroup}
+        />
+      )}
     </div>
   );
 }

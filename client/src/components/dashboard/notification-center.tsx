@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -24,7 +25,9 @@ export function NotificationCenter() {
   const acceptMutation = useAcceptIncomingInvitationMutation();
   const declineMutation = useDeclineIncomingInvitationMutation();
   const markReadMutation = useMarkNotificationsReadMutation();
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
   const [error, setError] = useState("");
   const [deletedInvitationIds, setDeletedInvitationIds] = useState<string[]>([]);
   const [deletedNotificationIds, setDeletedNotificationIds] = useState<string[]>([]);
@@ -59,6 +62,31 @@ export function NotificationCenter() {
     void markReadMutation.mutateAsync().catch(() => undefined);
   }, [isOpen, markReadMutation, unreadNotifications.length]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !wrapperRef.current || window.innerWidth < 640) {
+      setPanelStyle({});
+      return;
+    }
+    const rect = wrapperRef.current.getBoundingClientRect();
+    setPanelStyle({
+      top: rect.bottom + 8,
+      right: window.innerWidth - rect.right,
+    });
+  }, [isOpen]);
+
   const handleAccept = async (invitationId: string) => {
     try {
       setError("");
@@ -91,14 +119,14 @@ export function NotificationCenter() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapperRef}>
       <Button
         type="button"
         variant="ghost"
         size="sm"
         aria-label="Notifications"
         onClick={() => setIsOpen((current) => !current)}
-        className="relative"
+        className="relative cursor-pointer"
       >
         <Bell className="h-4 w-4" />
         {badgeCount > 0 ? (
@@ -106,192 +134,197 @@ export function NotificationCenter() {
             {badgeCount}
           </span>
         ) : null}
-        <span className="hidden sm:inline">Notifications</span>
       </Button>
 
-      {isOpen ? (
-        <div className="absolute right-0 top-full z-100 mt-2 w-[min(26rem,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl">
-          <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
-              <p className="mt-1 text-xs text-slate-500">
-                Live invites and activity from your collaborators.
-              </p>
+      {isOpen ? createPortal(
+        <div
+          className="fixed inset-0 z-[9999] bg-white sm:inset-auto sm:w-[min(26rem,calc(100vw-2rem))] sm:overflow-hidden sm:rounded-3xl sm:border sm:border-slate-200 sm:shadow-xl"
+          style={panelStyle}
+        >
+          <div className="flex h-full flex-col sm:h-auto">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Live invites and activity from your collaborators.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="cursor-pointer rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => setIsOpen(false)}
+              >
+                Close
+              </button>
             </div>
-            <button
-              type="button"
-              className="rounded-full px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-              onClick={() => setIsOpen(false)}
-            >
-              Close
-            </button>
-          </div>
 
-          <div className="max-h-[min(32rem,calc(100vh-7rem))] overflow-y-auto px-4 py-4">
-            {error ? (
-              <p className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {error}
-              </p>
-            ) : null}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:flex-none sm:max-h-[min(32rem,calc(100vh-7rem))]">
+              {error ? (
+                <p className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {error}
+                </p>
+              ) : null}
 
-            <div className="space-y-6">
-              <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Invitations
-                    </h4>
-                    <p className="mt-1 text-xs text-slate-400">
-                      All invitation activity and status updates.
-                    </p>
+              <div className="space-y-6 pb-6 sm:pb-0">
+                <section>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Invitations
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-400">
+                        All invitation activity and status updates.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                      {visibleInvitations.length}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                    {visibleInvitations.length}
-                  </span>
-                </div>
 
-                {visibleInvitations.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                    No invitations yet.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {visibleInvitations.map((invitation) => (
-                      <div
-                        key={invitation.id}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-slate-900">
-                              {invitation.inviterName} invited you to {invitation.groupName}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {invitation.status === "pending"
-                                ? `Expires ${formatRelativeDate(invitation.expiresAt)}`
-                                : `Updated ${formatRelativeDate(invitation.createdAt)}`}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${invitation.status === "pending"
-                                ? "bg-amber-100 text-amber-800"
-                                : invitation.status === "accepted"
-                                  ? "bg-green-100 text-green-800"
-                                  : invitation.status === "declined"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-gray-100 text-gray-800"
-                                }`}
-                            >
-                              {invitation.status}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteNotification(invitation.id, "invitation")}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                              title="Delete notification"
-                              aria-label="Delete invitation notification"
-                            >
-                              ×
-                            </button>
-                          </div>
-                        </div>
-
-                        {invitation.status === "pending" && (
-                          <div className="mt-3 flex gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => void handleAccept(invitation.id)}
-                              disabled={acceptMutation.isPending || declineMutation.isPending}
-                            >
-                              Accept
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => void handleDecline(invitation.id)}
-                              disabled={acceptMutation.isPending || declineMutation.isPending}
-                            >
-                              Decline
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Activity
-                    </h4>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Realtime updates when someone accepts or declines invites.
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                    {visibleNotifications.length}
-                  </span>
-                </div>
-
-                {visibleNotifications.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
-                    No activity yet.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {visibleNotifications.map((notification) => (
-                      <div
-                        key={notification.id}
-                        className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <button
-                            type="button"
-                            className="block w-full text-left"
-                            onClick={() => {
-                              if (notification.groupId) {
-                                navigate(`/group/${notification.groupId}`);
-                                setIsOpen(false);
-                              }
-                            }}
-                          >
+                  {visibleInvitations.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+                      No invitations yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {visibleInvitations.map((invitation) => (
+                        <div
+                          key={invitation.id}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
-                              <p className="text-sm font-semibold text-slate-900">{notification.title}</p>
-                              <p className="mt-1 text-xs text-slate-500">{notification.message}</p>
+                              <p className="text-sm font-semibold text-slate-900">
+                                {invitation.inviterName} invited you to {invitation.groupName}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {invitation.status === "pending"
+                                  ? `Expires ${formatRelativeDate(invitation.expiresAt)}`
+                                  : `Updated ${formatRelativeDate(invitation.createdAt)}`}
+                              </p>
                             </div>
-                          </button>
-                          <div className="flex items-center gap-2">
-                            {!notification.isRead ? (
-                              <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-500" aria-hidden />
-                            ) : null}
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${invitation.status === "pending"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : invitation.status === "accepted"
+                                    ? "bg-green-100 text-green-800"
+                                    : invitation.status === "declined"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-gray-100 text-gray-800"
+                                  }`}
+                              >
+                                {invitation.status}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNotification(invitation.id, "invitation")}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                                title="Delete notification"
+                                aria-label="Delete invitation notification"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+
+                          {invitation.status === "pending" && (
+                            <div className="mt-3 flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => void handleAccept(invitation.id)}
+                                disabled={acceptMutation.isPending || declineMutation.isPending}
+                              >
+                                Accept
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => void handleDecline(invitation.id)}
+                                disabled={acceptMutation.isPending || declineMutation.isPending}
+                              >
+                                Decline
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Activity
+                      </h4>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Realtime updates when someone accepts or declines invites.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                      {visibleNotifications.length}
+                    </span>
+                  </div>
+
+                  {visibleNotifications.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+                      No activity yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {visibleNotifications.map((notification) => (
+                        <div
+                          key={notification.id}
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
                             <button
                               type="button"
-                              onClick={() => handleDeleteNotification(notification.id, "activity")}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                              title="Delete notification"
-                              aria-label="Delete activity notification"
+                              className="block w-full text-left"
+                              onClick={() => {
+                                if (notification.groupId) {
+                                  navigate(`/group/${notification.groupId}`);
+                                  setIsOpen(false);
+                                }
+                              }}
                             >
-                              ×
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-slate-900">{notification.title}</p>
+                                <p className="mt-1 text-xs text-slate-500">{notification.message}</p>
+                              </div>
                             </button>
+                            <div className="flex items-center gap-2">
+                              {!notification.isRead ? (
+                                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-sky-500" aria-hidden />
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNotification(notification.id, "activity")}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                                title="Delete notification"
+                                aria-label="Delete activity notification"
+                              >
+                                ×
+                              </button>
+                            </div>
                           </div>
+                          <p className="mt-3 text-[11px] text-slate-400">
+                            {formatRelativeDate(notification.createdAt)}
+                          </p>
                         </div>
-                        <p className="mt-3 text-[11px] text-slate-400">
-                          {formatRelativeDate(notification.createdAt)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );
