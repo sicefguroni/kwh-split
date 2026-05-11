@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    dependencies:
+      nodemailer:
+        specifier: ^8.0.7
+        version: 8.0.7
 
   client:
     dependencies:

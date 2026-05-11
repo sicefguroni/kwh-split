@@ -4,11 +4,13 @@ export type { GroupExpense, GroupMember };
 
 export type SplitType = "equal" | "percentage" | "shares" | "exact";
 
+export type MemberDiscountType = "none" | "pwd" | "senior";
+
 export interface MemberSplitInput {
   selected: boolean;
   amount: string;
   locked?: boolean;
-  discountType?: "none" | "pwd" | "senior";
+  discountType?: MemberDiscountType;
 }
 
 export type SplitResult =
