@@ -6,10 +6,16 @@ import { Button } from "@/components/ui/button";
 import { AddExpenseModal } from "@/components/expenses/add-expense-modal";
 import { EditGroupModal, type GroupFormSubmission } from "@/components/dashboard/add-group-modal";
 import { GroupCoverBackground } from "@/components/dashboard/group-media";
-import { usePersistentState, useOnlineStatus } from "@/hooks/use-persistent-state";
-import { type GroupData, type GroupExpense, useGroupsState } from "@/hooks/use-groups";
+import { useOnlineStatus } from "@/hooks/use-persistent-state";
+import { type GroupData, type GroupExpense } from "@/hooks/use-groups";
 import { useCurrentUser } from "@/features/auth/use-auth";
-import { useGroupQuery } from "@/features/groups/use-groups";
+import {
+  useCreateExpenseMutation,
+  useDeleteExpenseMutation,
+  useExpensesQuery,
+  useUpdateExpenseMutation,
+} from "@/features/expenses/use-expenses";
+import { useGroupQuery, useUpdateGroupMutation } from "@/features/groups/use-groups";
 import { Spinner } from "@/components/ui/spinner";
 import {
   netForMember,
@@ -27,23 +33,60 @@ const EXPENSE_MENU_MARGIN = 12;
 export default function GroupDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [groups, setGroups] = useGroupsState();
-  const groupFromState = groups.find((groupItem) => groupItem.id === id);
-  const { data: apiGroup, isLoading: isGroupLoading, isError: isGroupError } = useGroupQuery(id ?? "");
-  const group: GroupData | undefined = groupFromState ?? (apiGroup
-    ? {
-        id: apiGroup.id,
-        name: apiGroup.name,
-        description: apiGroup.description ?? "",
-        currency: apiGroup.currency,
-        imageUrl: apiGroup.imageUrl ?? undefined,
-        members: apiGroup.members,
-        balance: 0,
-        createdAt: apiGroup.createdAt,
-        role: apiGroup.role,
-      }
-    : undefined);
-  const [expenses, setExpenses] = usePersistentState<GroupExpense[]>(`group-expenses-${id ?? "unknown"}`, []);
+  const groupId = id ?? "";
+  const { data: apiGroup, isLoading: isGroupLoading, isError: isGroupError } = useGroupQuery(groupId);
+  const { data: apiExpenses = [] } = useExpensesQuery(groupId);
+  const { data: user } = useCurrentUser();
+  const createExpenseMutation = useCreateExpenseMutation(groupId);
+  const updateExpenseMutation = useUpdateExpenseMutation(groupId);
+  const deleteExpenseMutation = useDeleteExpenseMutation(groupId);
+  const updateGroupMutation = useUpdateGroupMutation();
+  const isOnline = useOnlineStatus();
+
+  const group: GroupData | undefined = useMemo(
+    () =>
+      apiGroup
+        ? {
+          id: apiGroup.id,
+          name: apiGroup.name,
+          description: apiGroup.description ?? "",
+          currency: apiGroup.currency,
+          imageUrl: apiGroup.imageUrl ?? undefined,
+          members: apiGroup.members,
+          balance: 0,
+          createdAt: apiGroup.createdAt,
+          role: apiGroup.role,
+        }
+        : undefined,
+    [apiGroup],
+  );
+
+  const expenses: GroupExpense[] = useMemo(
+    () =>
+      apiExpenses.map((expense) => ({
+        id: expense.id,
+        name: expense.titleDescription,
+        amount: expense.totalAmount,
+        currency: group?.currency ?? "₱",
+        paidBy: expense.paidByUserId ?? "",
+        date: expense.saleDate,
+        note: "",
+        ...(expense.splitType && {
+          splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
+        }),
+        splits: expense.splits.map((split) => ({
+          memberId: split.userId,
+          amount: split.amountOwed,
+        })),
+        memberDiscounts: (expense.memberDiscounts ?? []).map((discount) => ({
+          memberId: discount.userId,
+          type: discount.type,
+        })),
+        status: "synced",
+      })),
+    [apiExpenses, group?.currency],
+  );
+
   const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "members">("expenses");
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isEditGroupOpen, setIsEditGroupOpen] = useState(false);
@@ -54,8 +97,6 @@ export default function GroupDetailsPage() {
   const touchStartX = useRef<number>(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const isOnline = useOnlineStatus();
-  const { data: user } = useCurrentUser();
 
   const totalSpentValue = useMemo(() => totalSpent(expenses), [expenses]);
 
@@ -93,27 +134,6 @@ export default function GroupDetailsPage() {
     }
     return Array.from(map.entries()).map(([date, items]) => ({ date, items }));
   }, [expenses]);
-
-  useEffect(() => {
-    if (!isOnline) return;
-    setExpenses((prev) =>
-      prev.map((expense) =>
-        expense.status === "pending" ? { ...expense, status: "synced" } : expense,
-      ),
-    );
-  }, [isOnline, setExpenses]);
-
-  useEffect(() => {
-    if (!group) return;
-    const vid = resolveViewerMemberId(group, user?.name);
-    if (!vid) return;
-    const bal = netForMember(expenses, vid);
-    setGroups((prev) => {
-      const cur = prev.find((g) => g.id === group.id);
-      if (!cur || cur.balance === bal) return prev;
-      return prev.map((g) => (g.id === group.id ? { ...g, balance: bal } : g));
-    });
-  }, [expenses, group, user?.name, setGroups]);
 
   useEffect(() => {
     if (!openMenuId) {
@@ -202,34 +222,47 @@ export default function GroupDetailsPage() {
   const handleSaveGroup = (submission: GroupFormSubmission) => {
     if (!group) return;
 
-    setGroups((prev) =>
-      prev.map((item) =>
-        item.id === group.id
-          ? {
-              ...item,
-              name: submission.name,
-              description: submission.description,
-              currency: submission.currency,
-              imageUrl: submission.imageUrl,
-            }
-          : item,
-      ),
-    );
+    void updateGroupMutation.mutateAsync({
+      id: group.id,
+      name: submission.name,
+      description: submission.description,
+      currency: submission.currency,
+      imageUrl: submission.imageUrl,
+    });
     setIsEditGroupOpen(false);
   };
 
-  const handleAddExpense = (expense: GroupExpense) => {
-    setExpenses((prev) => [{ ...expense, status: isOnline ? "synced" : "pending" }, ...prev]);
+  const toExpensePayload = (expense: GroupExpense) => ({
+    groupId: Number(groupId),
+    titleDescription: expense.name,
+    totalAmount: expense.amount,
+    ...(expense.paidBy ? { paidByUserId: Number(expense.paidBy) } : {}),
+    saleDate: expense.date,
+    taxAmount: 0,
+    tipAmount: 0,
+    splitType: (expense.splitType ?? "exact") as "equal" | "percentage" | "shares" | "exact" | "itemized",
+    participantUserIds: expense.splits.map((split) => Number(split.memberId)),
+    splits: expense.splits.map((split) => ({
+      userId: Number(split.memberId),
+      amount: split.amount,
+    })),
+    memberDiscounts: (expense.memberDiscounts ?? []).map((entry) => ({
+      userId: Number(entry.memberId),
+      type: entry.type,
+    })),
+  });
+
+  const handleAddExpense = async (expense: GroupExpense) => {
+    await createExpenseMutation.mutateAsync(toExpensePayload(expense));
     setSelectedExpense(null);
     setIsAddExpenseOpen(false);
   };
 
-  const handleEditExpense = (expense: GroupExpense) => {
-    setExpenses((prev) =>
-      prev.map((item) =>
-        item.id === expense.id ? { ...expense, status: isOnline ? "synced" : "pending" } : item,
-      ),
-    );
+  const handleEditExpense = async (expense: GroupExpense) => {
+    await updateExpenseMutation.mutateAsync({
+      expenseId: expense.id,
+      payload: toExpensePayload(expense),
+    });
     setSelectedExpense(null);
     setIsAddExpenseOpen(false);
   };
@@ -240,8 +273,8 @@ export default function GroupDetailsPage() {
     setOpenMenuId(null);
   };
 
-  const handleDeleteExpense = (expenseId: string) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+  const handleDeleteExpense = async (expenseId: string) => {
+    await deleteExpenseMutation.mutateAsync({ expenseId });
     setOpenMenuId(null);
     setSwipedId(null);
   };
@@ -481,11 +514,29 @@ export default function GroupDetailsPage() {
 
                         {/* Swipeable card content */}
                         <div
-                          className="relative flex items-center gap-4 bg-white px-4 py-3 transition-transform duration-200 ease-out"
+                          role="button"
+                          tabIndex={0}
+                          className="relative flex items-center gap-4 bg-white px-4 py-3 transition-all duration-200 ease-out hover:bg-slate-50 cursor-pointer"
                           style={{ transform: isSwiped ? "translateX(-128px)" : "translateX(0)" }}
-                          onTouchStart={(e) => handleTouchStart(e, expense.id)}
-                          onTouchEnd={(e) => handleTouchEnd(e, expense.id)}
-                          onClick={() => isSwiped && setSwipedId(null)}
+                          onTouchStart={(event) => handleTouchStart(event, expense.id)}
+                          onTouchEnd={(event) => handleTouchEnd(event, expense.id)}
+                          onClick={(event) => {
+                            // Prevent navigation if clicking on menu button or if swiped
+                            const target = event.target as HTMLElement;
+                            if (isSwiped || target.closest("button")) {
+                              if (isSwiped && !target.closest("button")) {
+                                setSwipedId(null);
+                              }
+                              return;
+                            }
+                            navigate(`/group/${groupId}/expense/${expense.id}`);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              navigate(`/group/${groupId}/expense/${expense.id}`);
+                            }
+                          }}
                         >
                           {/* Date badge */}
                           <div className="flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-sky-500 text-white">
