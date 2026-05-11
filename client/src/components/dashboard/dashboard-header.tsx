@@ -1,5 +1,6 @@
-import { LogOut, WifiOff } from "lucide-react";
 import { NotificationCenter } from "@/components/dashboard/notification-center";
+import { Home, LogOut, User, WifiOff } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/logo";
 
@@ -8,9 +9,9 @@ interface DashboardHeaderProps {
   isLoggingOut: boolean;
   isOnline: boolean;
   actionMessage?: { kind: "success" | "error"; text: string } | null;
-  onDismissAction: () => void;
+  onDismissAction?: () => void;
   deletedGroupNotification?: string | null;
-  onDismissDeletedNotification: () => void;
+  onDismissDeletedNotification?: () => void;
 }
 
 export function DashboardHeader({
@@ -22,6 +23,8 @@ export function DashboardHeader({
   deletedGroupNotification,
   onDismissDeletedNotification,
 }: DashboardHeaderProps) {
+  const navigate = useNavigate();
+
   return (
     <header className="border-b border-ink-100/60 bg-white/95">
       <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -33,6 +36,7 @@ export function DashboardHeader({
               <button
                 type="button"
                 onClick={onDismissDeletedNotification}
+                disabled={!onDismissDeletedNotification}
                 className="text-rose-700/80 transition hover:text-rose-900"
                 aria-label="Dismiss delete notification"
               >
@@ -54,6 +58,24 @@ export function DashboardHeader({
             </span>
           ) : null}
           <NotificationCenter />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/dashboard")}
+            aria-label="Home"
+          >
+            <Home className="h-4 w-4" />
+            <span className="hidden sm:inline">Home</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/profile")}
+            aria-label="Profile"
+          >
+            <User className="h-4 w-4" />
+            <span className="hidden sm:inline">Profile</span>
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -81,6 +103,7 @@ export function DashboardHeader({
             type="button"
             className="font-semibold uppercase tracking-wide opacity-80 transition hover:opacity-100"
             onClick={onDismissAction}
+            disabled={!onDismissAction}
           >
             Dismiss
           </button>
