@@ -21,7 +21,7 @@ interface RequestOptions {
 }
 
 async function request<T>(
-  method: "GET" | "POST" | "PUT" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
@@ -29,8 +29,12 @@ async function request<T>(
   let body: BodyInit | undefined;
 
   if (options.body !== undefined) {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify(options.body);
+    if (options.body instanceof FormData) {
+      body = options.body;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify(options.body);
+    }
   }
   Object.assign(headers, options.headers ?? {});
 
@@ -70,6 +74,8 @@ export const apiClient = {
     request<T>("POST", path, { ...(options ?? {}), body }),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("PUT", path, { ...(options ?? {}), body }),
+  patch: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>("PATCH", path, { ...(options ?? {}), body }),
   delete: <T>(path: string, options?: RequestOptions) =>
     request<T>("DELETE", path, options ?? {}),
 };

@@ -293,6 +293,32 @@ const applyMemberDiscounts = (
   };
 };
 
+export const calculateTaxAndTipDistribution = (
+  subtotal: number,
+  taxAmount: number,
+  tipAmount: number,
+  userAmounts: Array<{ userId: number; itemAmount: number }>,
+): Array<{ userId: number; taxAndTipAmount: number }> => {
+  const subtotalCents = toCents(subtotal);
+  const taxCents = toCents(taxAmount);
+  const tipCents = toCents(tipAmount);
+
+  const userWeights = userAmounts.map((entry) => ({
+    userId: entry.userId,
+    weight: Math.max(toCents(entry.itemAmount), 1),
+  }));
+
+  const taxAlloc = distributeByWeights(taxCents, userWeights);
+  const tipAlloc = distributeByWeights(tipCents, userWeights);
+  const taxByUser = new Map(taxAlloc.map((entry) => [entry.userId, entry.cents]));
+  const tipByUser = new Map(tipAlloc.map((entry) => [entry.userId, entry.cents]));
+
+  return userAmounts.map(({ userId }) => ({
+    userId,
+    taxAndTipAmount: toAmount((taxByUser.get(userId) ?? 0) + (tipByUser.get(userId) ?? 0)),
+  }));
+};
+
 export const calculateExpenseDetails = (
   input: ExpenseWriteInput,
   groupMemberIds: number[],

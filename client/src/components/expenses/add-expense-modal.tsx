@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { X, ArrowLeft, Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,9 @@ import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
 import { type AddExpenseModalProps, type MemberSplitInput, type SplitType, type Category } from "./types";
 import { useExpenseForm } from "./use-expense-form";
+import { ReceiptUploadZone } from "./receipt-upload-zone";
+import { receiptApi, type ReceiptItem } from "@/features/expenses/receipt-api";
+import { applyRoundingCorrection } from "./expense-utils";
 
 const CATEGORY_OPTIONS = [
   { label: "Accommodation", value: "Accommodation" },
@@ -43,7 +46,65 @@ export function AddExpenseModal({
   currency,
   groupName,
 }: AddExpenseModalProps) {
-  const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit });
+  const [ocrItems, setOcrItems] = useState<ReceiptItem[]>([]);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [receiptFile, setReceiptFile] = useState<{ file: File; preview: string } | null>(null);
+
+  const shouldSubmitItemized = useMemo(
+    () => !initialData && ocrItems.length > 0,
+    [initialData, ocrItems.length],
+  );
+
+  const buildItemizedSplits = (
+    itemAmount: number,
+    baseSplits: Array<{ memberId: string; amount: number }>,
+  ): Array<{ memberId: string; amount: number }> => {
+    const baseTotal = baseSplits.reduce((sum, split) => sum + split.amount, 0);
+    if (baseTotal <= 0) {
+      return [];
+    }
+
+    const proportional = baseSplits.map((split) => ({
+      memberId: split.memberId,
+      amount: (split.amount / baseTotal) * itemAmount,
+    }));
+
+    return applyRoundingCorrection(proportional, itemAmount).filter((split) => split.amount > 0);
+  };
+
+  const handleExpenseSubmit = async (expense: Parameters<AddExpenseModalProps["onSubmit"]>[0]) => {
+    if (!shouldSubmitItemized) {
+      await onSubmit(expense);
+      return;
+    }
+
+    const baseSplits = expense.splits.filter((split) => split.amount > 0);
+    if (baseSplits.length === 0) {
+      throw new Error("Unable to create itemized expenses without member splits.");
+    }
+
+    for (const [index, item] of ocrItems.entries()) {
+      if (item.price <= 0) continue;
+      const itemName = (item.itemName ?? "").trim() || `Receipt item ${index + 1}`;
+      const itemSplits = buildItemizedSplits(item.price, baseSplits);
+      if (itemSplits.length === 0) {
+        throw new Error("Unable to calculate item splits from receipt data.");
+      }
+
+      await onSubmit({
+        ...expense,
+        id: `${expense.id}-item-${index + 1}`,
+        name: itemName,
+        amount: item.price,
+        splits: itemSplits,
+      });
+    }
+
+    handleClearReceipt();
+  };
+
+  const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit: handleExpenseSubmit });
   const {
     step,
     expenseName, setExpenseName,
@@ -71,6 +132,36 @@ export function AddExpenseModal({
     "rebalanceExactAllocations" in form
       ? (form as { rebalanceExactAllocations: () => void }).rebalanceExactAllocations
       : () => undefined;
+
+  const handleOcrUpload = async (file: File) => {
+    setOcrLoading(true);
+    setOcrError(null);
+
+    try {
+      const preview = await receiptApi.fileToDataURL(file);
+      const items = await receiptApi.previewReceipt(file);
+      
+      setReceiptFile({ file, preview });
+      setOcrItems(items);
+
+      // Auto-populate total amount from OCR items
+      if (items.length > 0) {
+        const total = items.reduce((sum, item) => sum + item.price, 0);
+        setAmount(total.toFixed(2));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to extract receipt";
+      setOcrError(message);
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const handleClearReceipt = () => {
+    setReceiptFile(null);
+    setOcrItems([]);
+    setOcrError(null);
+  };
 
   if (!isOpen) return null;
 
@@ -164,6 +255,29 @@ export function AddExpenseModal({
               onSubmit={(e) => { e.preventDefault(); handleNextStep1(); }}
               className="flex flex-1 flex-col gap-4"
             >
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Receipt (optional) <span className="font-normal text-slate-400">OCR will auto-fill amount</span>
+                  </label>
+                </div>
+                <ReceiptUploadZone
+                  onUpload={handleOcrUpload}
+                  isLoading={ocrLoading}
+                  error={ocrError ?? undefined}
+                  preview={receiptFile ? { file: receiptFile.file, preview: receiptFile.preview } : undefined}
+                  onClear={handleClearReceipt}
+                />
+                {ocrItems.length > 0 && (
+                  <div className="rounded-lg bg-blue-50 p-3 text-sm">
+                    <p className="font-semibold text-blue-900">{ocrItems.length} items extracted</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Total: {currency} {ocrItems.reduce((sum, item) => sum + item.price, 0).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Expense name
@@ -425,7 +539,7 @@ export function AddExpenseModal({
           {/* ---------------------------------------------------------------- */}
           {step === 3 && (
             <form
-              onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+              onSubmit={(e) => { e.preventDefault(); void handleSubmit(); }}
               className="flex flex-1 flex-col gap-4"
             >
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -476,7 +590,7 @@ export function AddExpenseModal({
                   Back
                 </Button>
                 <Button type="submit" size="lg" className="flex-1 bg-ink-900 text-white hover:bg-ink-800 sm:mt-0">
-                  {isEditing ? "Save Changes" : "Add Expense"}
+                  {isEditing ? "Save Changes" : shouldSubmitItemized ? `Add ${ocrItems.length} Item Expenses` : "Add Expense"}
                 </Button>
               </div>
             </form>

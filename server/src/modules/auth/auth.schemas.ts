@@ -25,5 +25,12 @@ export const LoginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const UpdateProfileSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(80).optional(),
+  profileImageUrl: z.string().url().nullable().optional(),
+  bankQrUrl: z.string().url().nullable().optional(),
+});
+
 export type SignupInput = z.infer<typeof SignupSchema>;
 export type LoginInput = z.infer<typeof LoginSchema>;
+export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
