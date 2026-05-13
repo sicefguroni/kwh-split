@@ -2,6 +2,12 @@ import { apiClient } from "@/lib/api-client";
 import type { AuthResponse, AuthUser } from "./types";
 import type { LoginFormValues, SignupFormValues } from "./schemas";
 
+export interface UpdateProfileInput {
+  name?: string;
+  profileImageUrl?: string | null;
+  bankQrUrl?: string | null;
+}
+
 export const authApi = {
   signup: (values: SignupFormValues) =>
     apiClient.post<AuthResponse>("/api/auth/signup", {
@@ -24,4 +30,7 @@ export const authApi = {
       "/api/auth/me",
       signal ? { signal } : undefined,
     ),
+
+  updateProfile: (data: UpdateProfileInput) =>
+    apiClient.patch<{ user: AuthUser }>("/api/auth/profile", data),
 };

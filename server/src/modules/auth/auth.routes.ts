@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import { validateBody } from "../../middleware/validate.js";
 import { requireAuth } from "../../middleware/require-auth.js";
 import { authController } from "./auth.controller.js";
-import { LoginSchema, SignupSchema } from "./auth.schemas.js";
+import { LoginSchema, SignupSchema, UpdateProfileSchema } from "./auth.schemas.js";
 
 const writeLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
@@ -23,3 +23,4 @@ authRouter.get("/google/start", authController.oauthGoogleStart);
 authRouter.get("/google/callback", authController.oauthGoogleCallback);
 authRouter.post("/logout", authController.logout);
 authRouter.get("/me", requireAuth, authController.me);
+authRouter.patch("/profile", requireAuth, validateBody(UpdateProfileSchema), authController.updateProfile);

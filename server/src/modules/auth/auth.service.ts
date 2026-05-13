@@ -15,6 +15,8 @@ export interface PublicUser {
   id: string;
   email: string;
   name: string;
+  profileImageUrl?: string | null;
+  bankQrUrl?: string | null;
   createdAt: string;
 }
 
@@ -43,6 +45,8 @@ const toPublicUser = (record: UserRecord): PublicUser => ({
   id: String(record.user_id),
   email: record.email,
   name: record.name,
+  profileImageUrl: record.profile_image_url,
+  bankQrUrl: record.bank_qr_url,
   createdAt: record.created_at.toISOString(),
 });
 
@@ -317,5 +321,14 @@ export const authService = {
       base.searchParams.set("redirect", input.redirectPath);
     }
     return base.toString();
+  },
+
+  async updateProfile(userId: string, input: {
+    name?: string | undefined;
+    profileImageUrl?: string | null | undefined;
+    bankQrUrl?: string | null | undefined;
+  }): Promise<PublicUser> {
+    const user = await userRepository.updateProfile(parseUserId(userId), input);
+    return toPublicUser(user);
   },
 };

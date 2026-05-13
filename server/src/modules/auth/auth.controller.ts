@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { authService } from "./auth.service.js";
-import type { LoginInput, SignupInput } from "./auth.schemas.js";
+import type { LoginInput, SignupInput, UpdateProfileInput } from "./auth.schemas.js";
 import { clearAuthCookies, setAuthCookies } from "../../utils/cookies.js";
 import { getAuthenticatedUserId } from "../../middleware/require-auth.js";
 import { env } from "../../config/env.js";
@@ -134,6 +134,21 @@ export const authController = {
     try {
       const userId = getAuthenticatedUserId(req);
       const user = await authService.getCurrentUser(userId);
+      res.status(200).json({ user });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateProfile(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const data = req.body as UpdateProfileInput;
+      const user = await authService.updateProfile(userId, data);
       res.status(200).json({ user });
     } catch (error) {
       next(error);
