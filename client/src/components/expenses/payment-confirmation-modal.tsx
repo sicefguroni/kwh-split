@@ -88,7 +88,7 @@ function PaymentConfirmationModal({
         )}
 
         <div
-  className="w-full max-w-[250px] sm:max-w-[340px] rounded-3xl p-6 shadow-[var(--shadow-elegant)] border border-border animate-in zoom-in-95 fade-in"
+  className="w-full max-w-[250px] sm:max-w-[400px] rounded-3xl p-6 shadow-[var(--shadow-elegant)] animate-in zoom-in-95 fade-in"
   style={{ background: "white" }}
   onClick={(e) => e.stopPropagation()}
 >
@@ -114,11 +114,12 @@ function PaymentConfirmationModal({
       Amount
     </Label>
     
+
     <div
-      className={`flex items-center justify-center rounded-2xl px-4 py-5 transition-colors ring-1 w-full overflow-hidden ${
+      className={`flex items-center justify-center rounded-2xl px-4 py-5 transition-colors w-full overflow-hidden ${
         hasError
-          ? "bg-red-50 ring-red-500/50"
-          : "bg-slate-100 ring-slate-300 focus-within:ring-slate-400"
+          ? "bg-red-50 "
+          : "bg-slate-100"
       }`}
     >
       <span
