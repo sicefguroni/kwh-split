@@ -8,6 +8,8 @@ export interface UserRecord {
   is_active: boolean;
   avatar_url: string | null;
   email_verified: boolean | null;
+  profile_image_url: string | null;
+  bank_qr_url: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -32,6 +34,8 @@ const USER_COLUMNS = `
   is_active,
   avatar_url,
   email_verified,
+  profile_image_url,
+  bank_qr_url,
   created_at,
   updated_at
 `;
@@ -114,5 +118,51 @@ export const userRepository = {
       throw new Error("Failed to attach provider to user");
     }
     return linked;
+  },
+
+  async updateProfile(userId: number, input: {
+    name?: string | undefined;
+    profileImageUrl?: string | null | undefined;
+    bankQrUrl?: string | null | undefined;
+  }): Promise<UserRecord> {
+    const updates: string[] = [];
+    const values: unknown[] = [userId];
+    let paramCount = 2;
+
+    if (input.name !== undefined) {
+      updates.push(`name = $${paramCount}`);
+      values.push(input.name);
+      paramCount++;
+    }
+    if (input.profileImageUrl !== undefined) {
+      updates.push(`profile_image_url = $${paramCount}`);
+      values.push(input.profileImageUrl);
+      paramCount++;
+    }
+    if (input.bankQrUrl !== undefined) {
+      updates.push(`bank_qr_url = $${paramCount}`);
+      values.push(input.bankQrUrl);
+      paramCount++;
+    }
+
+    if (updates.length === 0) {
+      const result = await this.findById(userId);
+      if (!result) {
+        throw new Error("User not found");
+      }
+      return result;
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+
+    const { rows } = await pool.query<UserRecord>(
+      `UPDATE users SET ${updates.join(", ")} WHERE user_id = $1 RETURNING ${USER_COLUMNS}`,
+      values,
+    );
+    const updated = rows[0];
+    if (!updated) {
+      throw new Error("Failed to update user profile");
+    }
+    return updated;
   },
 };

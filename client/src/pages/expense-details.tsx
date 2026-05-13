@@ -209,6 +209,7 @@ export default function ExpenseDetailsPage() {
       split.memberId === expense.paidBy ||
       (paidAmounts[String(split.memberId)] ?? 0) >= split.amount - 0.0001,
   );
+  const canMarkPaid = isExpensePayer;
 
   const modalMemberSplit = paymentModal.payerMemberId
     ? expense.splits.find((s) => s.memberId === paymentModal.payerMemberId)
@@ -365,7 +366,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
                         <BadgeCheck className="h-3.5 w-3.5" /> Paid
                       </span>
                     )}
-                    {!isPayer && !isFullyPaid && (
+                    {canMarkPaid && !isPayer && !isFullyPaid && (
                       <Button
                         variant="secondary"
                         size="sm"

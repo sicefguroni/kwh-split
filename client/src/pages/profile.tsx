@@ -6,20 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { useCurrentUser, useLogoutMutation } from "@/features/auth/use-auth";
+import { useCurrentUser, useLogoutMutation, useUpdateProfileMutation } from "@/features/auth/use-auth";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const { data: user, isLoading: isUserLoading } = useCurrentUser();
   const { mutate: logout, isPending: isLoggingOut } = useLogoutMutation();
+  const { mutateAsync: updateProfile, isPending: isSavingProfile } = useUpdateProfileMutation();
   const isOnline = useOnlineStatus();
 
-  // Avatar & QR state
+  // Avatar & QR state for preview
+  const [name, setName] = useState(user?.name ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
-  const [name, setName] = useState(user?.name ?? "");
-  const [saving, setSaving] = useState(false);
+  const [savingName, setSavingName] = useState(false);
 
   const avatarInput = useRef<HTMLInputElement>(null);
   const qrInput = useRef<HTMLInputElement>(null);
@@ -32,40 +33,58 @@ export default function ProfilePage() {
     });
   };
 
-  const handleUpdateProfile = async (data: { name: string; email: string; imageUrl?: string }) => {
-    try {
-      // TODO: Implement profile update API call
-      console.log("Profile update:", data);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    } catch (error) {
-      console.error("Failed to update profile:", error);
-      throw error;
-    }
-  };
-
   const handleSaveName = async () => {
     if (!user || !name.trim()) return;
-    setSaving(true);
+    setSavingName(true);
     try {
-      await handleUpdateProfile({ name: name.trim(), email: user.email });
+      await updateProfile({ name: name.trim() });
     } finally {
-      setSaving(false);
+      setSavingName(false);
     }
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Create preview URL
     const url = URL.createObjectURL(file);
     setAvatarUrl(url);
-    await handleUpdateProfile({ name: user?.name ?? "", email: user?.email ?? "", imageUrl: url });
+
+    // Convert file to base64 data URL for storage
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      try {
+        await updateProfile({ profileImageUrl: dataUrl });
+      } catch (error) {
+        console.error("Failed to upload avatar:", error);
+        setAvatarUrl(null);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleQrChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleQrChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Create preview URL
     const url = URL.createObjectURL(file);
     setQrUrl(url);
+
+    // Convert file to base64 data URL for storage
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const dataUrl = event.target?.result as string;
+      try {
+        await updateProfile({ bankQrUrl: dataUrl });
+      } catch (error) {
+        console.error("Failed to upload QR code:", error);
+        setQrUrl(null);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   if (isUserLoading) {
@@ -120,22 +139,23 @@ export default function ProfilePage() {
             {/* Avatar */}
             <div className="relative group">
               <div className="h-28 w-28 rounded-full overflow-hidden bg-gradient-to-br from-mint-500 to-mint-600 ring-4 ring-white shadow-lg flex items-center justify-center">
-                {avatarUrl ? (
+                {avatarUrl || user?.profileImageUrl ? (
                   <img
-                    src={avatarUrl}
-                    alt={user.name}
+                    src={avatarUrl || user?.profileImageUrl || ""}
+                    alt={user?.name}
                     className="h-full w-full object-cover"
                   />
                 ) : (
                   <span className="text-4xl font-bold text-white">
-                    {user.name.charAt(0).toUpperCase()}
+                    {user?.name?.charAt(0).toUpperCase()}
                   </span>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => avatarInput.current?.click()}
-                className="absolute bottom-0 right-0 h-9 w-9 rounded-full bg-ink-900 text-white flex items-center justify-center shadow-md hover:bg-ink-700 transition-colors"
+                disabled={isSavingProfile}
+                className="absolute bottom-0 right-0 h-9 w-9 rounded-full bg-ink-900 text-white flex items-center justify-center shadow-md hover:bg-ink-700 transition-colors disabled:opacity-50"
                 aria-label="Change profile picture"
               >
                 <Camera className="h-4 w-4" />
@@ -167,9 +187,9 @@ export default function ProfilePage() {
                     onClick={handleSaveName}
                     variant="primary"
                     size="md"
-                    disabled={saving || name.trim() === (user.name ?? "")}
+                    disabled={savingName || isSavingProfile || name.trim() === (user?.name ?? "")}
                   >
-                    {saving ? "Saving…" : "Save"}
+                    {savingName || isSavingProfile ? "Saving…" : "Save"}
                   </Button>
                 </div>
               </div>
@@ -180,7 +200,7 @@ export default function ProfilePage() {
                 </Label>
                 <Input
                   id="email"
-                  value={user.email}
+                  value={user?.email ?? ""}
                   disabled
                   className="text-ink-600 bg-ink-50"
                 />
@@ -206,9 +226,10 @@ export default function ProfilePage() {
               variant="secondary"
               size="sm"
               onClick={() => qrInput.current?.click()}
+              disabled={isSavingProfile}
             >
               <Upload className="h-4 w-4 mr-1" />
-              {qrUrl ? "Replace" : "Upload"}
+              {isSavingProfile ? "Saving…" : (qrUrl || user?.bankQrUrl) ? "Replace" : "Upload"}
             </Button>
             <input
               ref={qrInput}
@@ -219,10 +240,10 @@ export default function ProfilePage() {
             />
           </div>
 
-          {qrUrl ? (
+          {qrUrl || user?.bankQrUrl ? (
             <div className="rounded-xl border bg-ink-50/30 p-4 flex justify-center">
               <img
-                src={qrUrl}
+                src={qrUrl || user?.bankQrUrl || ""}
                 alt="Wallet QR"
                 className="max-h-80 rounded-lg object-contain"
               />
@@ -231,7 +252,8 @@ export default function ProfilePage() {
             <button
               type="button"
               onClick={() => qrInput.current?.click()}
-              className="w-full rounded-xl border-2 border-dashed border-ink-200 bg-ink-50/30 hover:bg-ink-50/60 transition py-12 flex flex-col items-center gap-2 text-ink-500"
+              disabled={isSavingProfile}
+              className="w-full rounded-xl border-2 border-dashed border-ink-200 bg-ink-50/30 hover:bg-ink-50/60 transition py-12 flex flex-col items-center gap-2 text-ink-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <QrCode className="h-10 w-10" />
               <span className="text-sm font-bold">Click to upload QR card</span>

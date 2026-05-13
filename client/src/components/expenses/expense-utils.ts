@@ -489,6 +489,13 @@ export function calculateSplits(
         splits: buildExactSplits(selectedMemberIds, memberSplitInputs),
       };
     }
+
+    case "itemized":
+    default:
+      return {
+        ok: false,
+        error: "Itemized expenses are handled separately.",
+      };
   }
 }
 
