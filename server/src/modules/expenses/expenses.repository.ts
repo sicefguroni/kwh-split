@@ -317,4 +317,30 @@ export const expensesRepository = {
     );
     return rows[0]?.group_id ?? null;
   },
+
+  async replaceExpenseSplits(expenseId: number, splits: CalculatedSplit[]): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`DELETE FROM expense_splits WHERE expense_id = $1`, [expenseId]);
+
+      for (const split of splits) {
+        await client.query(
+          `INSERT INTO expense_splits (expense_id, user_id, amount_owed, percentage, share)
+           VALUES ($1, $2, $3::numeric(10,2), $4, $5::numeric(10,2))`,
+          [expenseId, split.userId, split.amountOwed, split.percentage, split.share],
+        );
+      }
+
+      await client.query(`UPDATE expenses SET updated_at = CURRENT_TIMESTAMP WHERE expense_id = $1`, [
+        expenseId,
+      ]);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
 };

@@ -137,3 +137,65 @@ test("itemized split allocates tax and tip proportionally", () => {
     112,
   );
 });
+
+test("tax and tip distribution - proportional allocation", () => {
+  const { calculateTaxAndTipDistribution } = require("./expenses.calculations.js");
+
+  const result = calculateTaxAndTipDistribution(
+    100, // subtotal
+    10, // tax
+    0, // no tip
+    [
+      { userId: 1, itemAmount: 70 }, // 70% of bill
+      { userId: 2, itemAmount: 30 }, // 30% of bill
+    ],
+  );
+
+  assert.equal(result.length, 2);
+
+  // User 1 should pay 70% of tax
+  const user1Tax = result.find((r) => r.userId === 1)?.taxAndTipAmount || 0;
+  assert(user1Tax > 6 && user1Tax < 8, `Expected ~7, got ${user1Tax}`);
+
+  // User 2 should pay 30% of tax
+  const user2Tax = result.find((r) => r.userId === 2)?.taxAndTipAmount || 0;
+  assert(user2Tax > 2 && user2Tax < 4, `Expected ~3, got ${user2Tax}`);
+});
+
+test("tax and tip distribution - equal split", () => {
+  const { calculateTaxAndTipDistribution } = require("./expenses.calculations.js");
+
+  const result = calculateTaxAndTipDistribution(
+    100, // subtotal
+    10, // tax
+    10, // tip
+    [
+      { userId: 1, itemAmount: 50 },
+      { userId: 2, itemAmount: 50 },
+    ],
+  );
+
+  assert.equal(result.length, 2);
+
+  // Each user should pay half the tax and tip
+  result.forEach((r) => {
+    assert(r.taxAndTipAmount > 9 && r.taxAndTipAmount < 11);
+  });
+});
+
+test("tax and tip distribution - no loss in rounding", () => {
+  const { calculateTaxAndTipDistribution } = require("./expenses.calculations.js");
+
+  const result = calculateTaxAndTipDistribution(
+    123.45,
+    11.11,
+    8.89,
+    [
+      { userId: 1, itemAmount: 61.73 },
+      { userId: 2, itemAmount: 61.72 },
+    ],
+  );
+
+  const total = result.reduce((sum, r) => sum + r.taxAndTipAmount, 0);
+  assert(total > 19.9 && total < 20.1, `Expected ~20, got ${total}`);
+});

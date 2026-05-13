@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { X, ArrowLeft, Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,8 @@ import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
 import { type AddExpenseModalProps, type MemberSplitInput, type SplitType } from "./types";
 import { useExpenseForm } from "./use-expense-form";
+import { ReceiptUploadZone } from "./receipt-upload-zone";
+import { receiptApi, type ReceiptItem } from "@/features/expenses/receipt-api";
 
 const SPLIT_TYPE_OPTIONS = [
   { label: "Split equally", value: "equal" },
@@ -27,6 +29,11 @@ export function AddExpenseModal({
   currency,
   groupName,
 }: AddExpenseModalProps) {
+  const [ocrItems, setOcrItems] = useState<ReceiptItem[]>([]);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [receiptFile, setReceiptFile] = useState<{ file: File; preview: string } | null>(null);
+
   const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit });
   const {
     step,
@@ -54,6 +61,36 @@ export function AddExpenseModal({
     "rebalanceExactAllocations" in form
       ? (form as { rebalanceExactAllocations: () => void }).rebalanceExactAllocations
       : () => undefined;
+
+  const handleOcrUpload = async (file: File) => {
+    setOcrLoading(true);
+    setOcrError(null);
+
+    try {
+      const preview = await receiptApi.fileToDataURL(file);
+      const items = await receiptApi.previewReceipt(file);
+      
+      setReceiptFile({ file, preview });
+      setOcrItems(items);
+
+      // Auto-populate total amount from OCR items
+      if (items.length > 0) {
+        const total = items.reduce((sum, item) => sum + item.price, 0);
+        setAmount(total.toFixed(2));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to extract receipt";
+      setOcrError(message);
+    } finally {
+      setOcrLoading(false);
+    }
+  };
+
+  const handleClearReceipt = () => {
+    setReceiptFile(null);
+    setOcrItems([]);
+    setOcrError(null);
+  };
 
   if (!isOpen) return null;
 
@@ -147,6 +184,29 @@ export function AddExpenseModal({
               onSubmit={(e) => { e.preventDefault(); handleNextStep1(); }}
               className="flex flex-1 flex-col gap-4"
             >
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Receipt (optional) <span className="font-normal text-slate-400">OCR will auto-fill amount</span>
+                  </label>
+                </div>
+                <ReceiptUploadZone
+                  onUpload={handleOcrUpload}
+                  isLoading={ocrLoading}
+                  error={ocrError ?? undefined}
+                  preview={receiptFile ? { file: receiptFile.file, preview: receiptFile.preview } : undefined}
+                  onClear={handleClearReceipt}
+                />
+                {ocrItems.length > 0 && (
+                  <div className="rounded-lg bg-blue-50 p-3 text-sm">
+                    <p className="font-semibold text-blue-900">{ocrItems.length} items extracted</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      Total: {currency} {ocrItems.reduce((sum, item) => sum + item.price, 0).toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Expense name
