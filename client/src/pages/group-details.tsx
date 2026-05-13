@@ -70,7 +70,7 @@ export default function GroupDetailsPage() {
         currency: group?.currency ?? "₱",
         paidBy: expense.paidByUserId ?? "",
         date: expense.saleDate,
-        note: "",
+        note: expense.note ?? "",
         ...(expense.splitType && {
           splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
         }),
@@ -238,9 +238,11 @@ export default function GroupDetailsPage() {
     totalAmount: expense.amount,
     ...(expense.paidBy ? { paidByUserId: Number(expense.paidBy) } : {}),
     saleDate: expense.date,
+    note: expense.note ?? "",
+    category: expense.category ?? "General",
     taxAmount: 0,
     tipAmount: 0,
-    splitType: (expense.splitType ?? "exact") as "equal" | "percentage" | "shares" | "exact" | "itemized",
+    splitType: (expense.splitType ?? "equal") as "equal" | "percentage" | "shares" | "exact" | "itemized",
     participantUserIds: expense.splits.map((split) => Number(split.memberId)),
     splits: expense.splits.map((split) => ({
       userId: Number(split.memberId),

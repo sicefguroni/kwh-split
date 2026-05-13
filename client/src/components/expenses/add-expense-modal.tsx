@@ -4,14 +4,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/cn";
-import { type AddExpenseModalProps, type MemberSplitInput, type SplitType } from "./types";
+import { type AddExpenseModalProps, type MemberSplitInput, type SplitType, type Category } from "./types";
 import { useExpenseForm } from "./use-expense-form";
+
+const CATEGORY_OPTIONS = [
+  { label: "Accommodation", value: "Accommodation" },
+  { label: "Activities", value: "Activities" },
+  { label: "Food", value: "Food" },
+  { label: "Groceries", value: "Groceries" },
+  { label: "General", value: "General" },
+  { label: "Rent", value: "Rent" },
+  { label: "School Requirements", value: "School Requirements" },
+  { label: "Subscriptions", value: "Subscriptions" },
+  { label: "Transportation", value: "Transportation" },
+  { label: "Travel", value: "Travel" },
+  { label: "Utilities", value: "Utilities" },
+  { label: "Other", value: "Other" },
+] as const satisfies ReadonlyArray<{ label: string; value: Category }>;
 
 const SPLIT_TYPE_OPTIONS = [
   { label: "Split equally", value: "equal" },
   { label: "Split by percentage", value: "percentage" },
   { label: "Split by shares", value: "shares" },
   { label: "Split by exact amounts", value: "exact" },
+  { label: "Split by item", value: "itemized" },
 ] as const satisfies ReadonlyArray<{ label: string; value: SplitType }>;
 
 // =============================================================================
@@ -35,6 +51,7 @@ export function AddExpenseModal({
     paidBy, setPaidBy,
     date, setDate,
     note, setNote,
+    category, setCategory,
     splitType, setSplitType,
     memberSplitInputs, updateMemberSplitInput,
     updateExactAmount,
@@ -205,13 +222,13 @@ export function AddExpenseModal({
 
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Split type
+                  Category
                 </label>
                 <Select
-                  value={splitType}
-                  onValueChange={(value) => setSplitType(value as SplitType)}
-                  options={[...SPLIT_TYPE_OPTIONS]}
-                  ariaLabel="Split type"
+                  value={category}
+                  onValueChange={(value) => setCategory(value as Category)}
+                  options={[...CATEGORY_OPTIONS]}
+                  ariaLabel="Category"
                   triggerClassName="h-12 border-slate-200 bg-slate-50 text-slate-700 focus:ring-slate-400/20"
                   menuClassName="border-slate-200"
                 />
