@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Camera } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PaymentConfirmationModal } from "@/components/expenses/payment-confirmation-modal";
 import { useCurrentUser } from "@/features/auth/use-auth";
@@ -71,6 +71,7 @@ export default function ExpenseDetailsPage() {
     () => (group ? resolveViewerMemberId(group, user?.name, user?.id) : undefined),
     [group, user?.name, user?.id],
   );
+  const isExpensePayer = viewerId !== undefined && expense?.paidBy === viewerId;
 
   // Get all members with their split info
   const memberSplits = useMemo(() => {
@@ -241,17 +242,6 @@ export default function ExpenseDetailsPage() {
                 </div>
             </div>
 
-            <div className="mt-6">
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full rounded-full"
-                onClick={() => navigate(`/group/${groupId}/expense/${expenseId}/receipt`)}
-              >
-                <Camera className="mr-2 h-4 w-4" />
-                Scan receipt with OCR
-              </Button>
-            </div>
           </div>
         </div>
 
@@ -301,7 +291,7 @@ export default function ExpenseDetailsPage() {
                         PAID
                       </span>
                     )}
-                    {split.memberId !== expense.paidBy && !isFullyPaid && (
+                    {split.memberId !== expense.paidBy && !isFullyPaid && isExpensePayer && (
                       <Button
                         variant="secondary"
                         size="sm"
