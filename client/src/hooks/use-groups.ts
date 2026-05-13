@@ -34,6 +34,7 @@ export interface GroupExpense {
   paidBy: string;
   date: string;
   note?: string;
+  category?: string;
   splitType?: "equal" | "percentage" | "shares" | "exact" | "itemized";
   splits: GroupExpenseSplit[];
   memberDiscounts?: Array<{ memberId: string; type: "none" | "pwd" | "senior" }>;
