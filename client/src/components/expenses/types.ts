@@ -2,7 +2,9 @@ import { type GroupExpense, type GroupMember } from "@/hooks/use-groups";
 
 export type { GroupExpense, GroupMember };
 
-export type SplitType = "equal" | "percentage" | "shares" | "exact";
+export type SplitType = "equal" | "percentage" | "shares" | "exact" | "itemized";
+
+export type Category = "Accommodation" | "Activities" | "Food" | "Groceries" | "General" | "Rent" | "School Requirements" | "Subscriptions" | "Transportation" | "Travel" | "Utilities" | "Other";
 
 export type MemberDiscountType = "none" | "pwd" | "senior";
 

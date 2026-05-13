@@ -39,6 +39,8 @@ interface UseExpenseFormReturn {
   setDate: (v: string) => void;
   note: string;
   setNote: (v: string) => void;
+  category: string;
+  setCategory: (v: string) => void;
   // Step 2 fields
   splitType: SplitType;
   setSplitType: (v: SplitType) => void;
@@ -78,6 +80,7 @@ export function useExpenseForm({
   const [paidBy, setPaidBy] = useState(members[0]?.id ?? "");
   const [date, setDate] = useState(todayISODate());
   const [note, setNote] = useState("");
+  const [category, setCategory] = useState("General");
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [memberSplitInputs, setMemberSplitInputs] = useState<Record<string, MemberSplitInput>>(
     () => buildDefaultSplitInputs(members),
@@ -129,7 +132,8 @@ export function useExpenseForm({
     setPaidBy(initialData?.paidBy ?? members[0]?.id ?? "");
     setDate(initialData?.date ?? todayISODate());
     setNote(initialData?.note ?? "");
-    setSplitType("equal");
+    setCategory(initialData?.category ?? "General");
+    setSplitType((initialData?.splitType as SplitType | undefined) ?? "equal");
     setMemberSplitInputs(buildDefaultSplitInputs(members, initialData));
     setComputedSplits({});
     setStep(1);
@@ -317,6 +321,7 @@ export function useExpenseForm({
     setPaidBy(members[0]?.id ?? "");
     setDate(todayISODate());
     setNote("");
+    setCategory("General");
     setSplitType("equal");
     setMemberSplitInputs(buildDefaultSplitInputs(members));
     setComputedSplits({});
@@ -400,6 +405,8 @@ export function useExpenseForm({
       paidBy,
       date,
       note: note.trim(),
+      category: category || "General",
+      splitType,
       splits: Object.entries(computedSplits)
         .filter(([, amt]) => amt > 0)
         .map(([memberId, amt]) => ({ memberId, amount: amt })),
@@ -433,6 +440,8 @@ export function useExpenseForm({
     setDate,
     note,
     setNote,
+    category,
+    setCategory,
     splitType,
     setSplitType,
     memberSplitInputs,
