@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { authApi } from "./api";
+import { authApi, type UpdateProfileInput } from "./api";
 import type { AuthResponse, AuthUser } from "./types";
 import type { LoginFormValues, SignupFormValues } from "./schemas";
 import { ApiError } from "@/lib/api-client";
@@ -51,6 +51,16 @@ export function useLogoutMutation() {
     onSuccess: () => {
       queryClient.setQueryData<AuthUser | null>(ME_KEY, null);
       queryClient.clear();
+    },
+  });
+}
+
+export function useUpdateProfileMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<{ user: AuthUser }, ApiError, UpdateProfileInput>({
+    mutationFn: (data) => authApi.updateProfile(data),
+    onSuccess: ({ user }) => {
+      queryClient.setQueryData<AuthUser>(ME_KEY, user);
     },
   });
 }

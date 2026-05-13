@@ -22,7 +22,7 @@ export type SplitResult =
 export interface AddExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (expense: GroupExpense) => void;
+  onSubmit: (expense: GroupExpense) => Promise<void> | void;
   initialData: GroupExpense | undefined;
   members: GroupMember[];
   currency: string;
