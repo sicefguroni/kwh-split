@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 interface PaymentConfirmationModalProps {
@@ -6,6 +7,8 @@ interface PaymentConfirmationModalProps {
   payerName: string;
   initialAmount: string;
   maxAmount: string;
+  amountPaid: string;
+  totalShare: string;
   currency: string;
   onConfirm: (amount: string) => void;
   onCancel: () => void;
@@ -16,6 +19,8 @@ function PaymentConfirmationModal({
   payerName,
   initialAmount,
   maxAmount,
+  amountPaid,
+  totalShare,
   currency,
   onConfirm,
   onCancel,
@@ -46,17 +51,17 @@ function PaymentConfirmationModal({
   const isConfirmDisabled = hasError || amountNum <= 0 || amount.trim() === "";
 
   return (
-    <>
-      {/* Blurred backdrop overlay */}
+    <div
+      className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30"
+      onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+    >
       <div
-        className="fixed inset-0 z-40 backdrop-blur-sm bg-black/30"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 flex-col"
         onClick={onCancel}
-      />
-
-      {/* Centered card wrapper */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 flex-col">
-
-        {/* Error message — same max-width as card */}
+      >
+        {/* Error message — above card */}
         {hasError && (
           <div
             className="w-full max-w-[250px] sm:max-w-[340px] mb-3"
@@ -82,142 +87,117 @@ function PaymentConfirmationModal({
           </div>
         )}
 
-        {/* Modal card */}
         <div
-          className="w-full max-w-[250px] sm:max-w-[340px]"
-          style={{
-            background: "white",
-            borderRadius: "20px",
-            padding: "24px 20px",
-            boxShadow:
-              "0 0 0 1.5px #c7dff7, 0 8px 32px rgba(80, 140, 220, 0.10), 0 2px 8px rgba(0,0,0,0.06)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0",
-          }}
-        >
-          {/* Header */}
-          <p
-            style={{
-              fontSize: "15px",
-              color: "#1a1a1a",
-              marginBottom: "18px",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 400,
-              lineHeight: 1.4,
-            }}
-          >
-            <span style={{ fontWeight: 700 }}>{memberName}</span>
-            {" paid "}
-            <span style={{ fontWeight: 700 }}>{payerName}</span>
-          </p>
+  className="w-full max-w-[250px] sm:max-w-[340px] rounded-3xl p-6 shadow-[var(--shadow-elegant)] border border-border animate-in zoom-in-95 fade-in"
+  style={{ background: "white" }}
+  onClick={(e) => e.stopPropagation()}
+>
+  <div className="text-center">
+    
+    <p
+      style={{
+        fontSize: "16px",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        fontWeight: 400,
+        lineHeight: 1.4,
+      }}
+      className="mt-1 text-center text-foreground"
+    >
+      <span style={{ fontWeight: 700, color: "var(--primary)" }}>{memberName}</span>
+      {" paid "}
+      <span style={{ fontWeight: 700, color: "var(--primary)" }}>{payerName}</span>
+    </p>
+  </div>
 
-          {/* Amount input box */}
-          <div
-            style={{
-              background: hasError ? "rgba(239, 68, 68, 0.06)" : "#f2f2f2",
-              borderRadius: "14px",
-              padding: "18px 16px",
-              marginBottom: "18px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "100%",
-              transition: "background 0.2s ease",
-              border: hasError
-                ? "1px solid rgba(220, 38, 38, 0.3)"
-                : "1px solid transparent",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "26px",
-                fontWeight: 700,
-                color: hasError ? "#dc2626" : "#1a1a1a",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                letterSpacing: "-0.5px",
-                paddingRight: "2px",
-                transition: "color 0.2s ease",
-              }}
-            >
-              {currency}
-            </span>
+  <div className="mt-5">
+    <Label htmlFor="amount" className="sr-only">
+      Amount
+    </Label>
+    
+    <div
+      className={`flex items-center justify-center rounded-2xl px-4 py-5 transition-colors ring-1 w-full overflow-hidden ${
+        hasError
+          ? "bg-red-50 ring-red-500/50"
+          : "bg-slate-100 ring-slate-300 focus-within:ring-slate-400"
+      }`}
+    >
+      <span
+        className={`text-3xl font-bold tracking-tight shrink-0 ${
+          hasError ? "text-red-500" : "text-foreground"
+        }`}
+      >
+        {currency}
+      </span>
+      <input
+        id="amount"
+        type="text"
+        inputMode="decimal"
+        value={amount}
+        onChange={handleChange}
+        placeholder="0.00"
+        style={{
+          /* Expands based on typing, but capped by max-w-full class */
+          width: `${Math.max((amount?.length || 0) + 1, 4)}ch`
+        }}
+        className={`ml-1 bg-transparent outline-none text-3xl font-bold tracking-tight text-center max-w-full min-w-[2ch] ${
+          hasError ? "text-red-500" : "text-foreground"
+        }`}
+        autoFocus
+      />
+    </div>
 
-            <input
-              type="text"
-              inputMode="decimal"
-              value={amount}
-              onChange={handleChange}
-              style={{
-                width: `${Math.max((amount?.length || 0) + 1, 5)}ch`,
-                background: "transparent",
-                border: "none",
-                outline: "none",
-                textAlign: "left",
-                fontSize: "26px",
-                fontWeight: 700,
-                color: hasError ? "#dc2626" : "#1a1a1a",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
-                letterSpacing: "-0.5px",
-                transition: "color 0.2s ease",
-              }}
-              placeholder="0.00"
-            />
-          </div>
+    <div className="mt-2 flex items-center">
+      <span
+        style={{
+          fontSize: "12px",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontWeight: 400,
+        }}
+        className="text-muted-foreground"
+      >
+        Paid {currency}{amountPaid} of {currency}{totalShare}
+      </span>
+    </div>
+  </div>
 
-          {/* Max amount hint */}
-          <p
-            style={{
-              fontSize: "12px",
-              color: "#999",
-              textAlign: "center",
-              marginBottom: "4px",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-          >
-            Amount owed: {currency}{maxAmount}
-          </p>
+  <p
+    style={{
+      fontSize: "14px",
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
+      fontWeight: 400,
+      lineHeight: 1.55,
+    }}
+    className="mt-4 text-center text-muted-foreground"
+  >
+    Ensure the money has been sent beforehand, as SPLIT does not handle transfers.
+  </p>
 
-          {/* Description */}
-          <p
-            style={{
-              fontSize: "14px",
-              color: "#555",
-              textAlign: "center",
-              lineHeight: 1.55,
-              marginBottom: "15px",
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-            }}
-          >
-            You are recording a payment that occurred outside SPLIT.
-          </p>
+  <div className="mt-5 flex gap-3">
+    <Button
+      variant="secondary"
+      size="sm"
+      fullWidth
+      className="rounded-[50px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]"
+      onClick={onCancel}
+    >
+      Cancel
+    </Button>
 
-          {/* Buttons */}
-          <div className="flex gap-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              fullWidth
-              className="rounded-[50px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]"
-              onClick={onCancel}
-            >
-              Cancel
-            </Button>
+    <Button
+      variant="primary"
+      size="sm"
+      fullWidth
+      disabled={isConfirmDisabled}
+      className="rounded-[50px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]"
+      onClick={handleConfirm}
+    >
+      Confirm
+    </Button>
+  </div>
 
-            <Button
-              variant="primary"
-              size="sm"
-              fullWidth
-              disabled={isConfirmDisabled}
-              className="rounded-[50px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]"
-              onClick={handleConfirm}
-            >
-              Confirm
-            </Button>
-          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
