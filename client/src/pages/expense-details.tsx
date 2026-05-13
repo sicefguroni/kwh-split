@@ -45,6 +45,7 @@ export default function ExpenseDetailsPage() {
         paidBy: expense.paidByUserId ?? "",
         date: expense.saleDate,
         note: expense.note ?? "",
+        category: (expense as any).category ?? "General",
         ...(expense.splitType && {
           splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
         }),
@@ -77,6 +78,8 @@ export default function ExpenseDetailsPage() {
   totalAmount: expense.amount,
   ...(expense.paidBy ? { paidByUserId: Number(expense.paidBy) } : {}),
   saleDate: expense.date,
+  note: expense.note ?? "",  
+  category: expense.category ?? "General",
   taxAmount: 0,
   tipAmount: 0,
   splitType: (expense.splitType ?? "exact") as "equal" | "percentage" | "shares" | "exact" | "itemized",
@@ -288,7 +291,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
           <MetaRow
             icon={<Receipt className="h-4 w-4" />}
             label="Category"
-            value="General"
+            value={expense.category ?? "General"}
           />
         </section>
 
@@ -386,6 +389,8 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
           payerName={paidByMember?.name ?? "Unknown"}
           initialAmount={modalRemainingAmount.toFixed(2)}
           maxAmount={modalRemainingAmount.toFixed(2)}
+          amountPaid={modalAmountPaid.toFixed(2)}
+          totalShare={(modalMemberSplit?.amount ?? 0).toFixed(2)}
           currency={group.currency}
           onConfirm={handleConfirmPayment}
           onCancel={closePaymentModal}
