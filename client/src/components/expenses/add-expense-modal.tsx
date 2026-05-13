@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { X, ArrowLeft, Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { type AddExpenseModalProps, type MemberSplitInput, type SplitType } from
 import { useExpenseForm } from "./use-expense-form";
 import { ReceiptUploadZone } from "./receipt-upload-zone";
 import { receiptApi, type ReceiptItem } from "@/features/expenses/receipt-api";
+import { applyRoundingCorrection } from "./expense-utils";
 
 const SPLIT_TYPE_OPTIONS = [
   { label: "Split equally", value: "equal" },
@@ -34,7 +35,60 @@ export function AddExpenseModal({
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<{ file: File; preview: string } | null>(null);
 
-  const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit });
+  const shouldSubmitItemized = useMemo(
+    () => !initialData && ocrItems.length > 0,
+    [initialData, ocrItems.length],
+  );
+
+  const buildItemizedSplits = (
+    itemAmount: number,
+    baseSplits: Array<{ memberId: string; amount: number }>,
+  ): Array<{ memberId: string; amount: number }> => {
+    const baseTotal = baseSplits.reduce((sum, split) => sum + split.amount, 0);
+    if (baseTotal <= 0) {
+      return [];
+    }
+
+    const proportional = baseSplits.map((split) => ({
+      memberId: split.memberId,
+      amount: (split.amount / baseTotal) * itemAmount,
+    }));
+
+    return applyRoundingCorrection(proportional, itemAmount).filter((split) => split.amount > 0);
+  };
+
+  const handleExpenseSubmit = async (expense: Parameters<AddExpenseModalProps["onSubmit"]>[0]) => {
+    if (!shouldSubmitItemized) {
+      await onSubmit(expense);
+      return;
+    }
+
+    const baseSplits = expense.splits.filter((split) => split.amount > 0);
+    if (baseSplits.length === 0) {
+      throw new Error("Unable to create itemized expenses without member splits.");
+    }
+
+    for (const [index, item] of ocrItems.entries()) {
+      if (item.price <= 0) continue;
+      const itemName = (item.itemName ?? "").trim() || `Receipt item ${index + 1}`;
+      const itemSplits = buildItemizedSplits(item.price, baseSplits);
+      if (itemSplits.length === 0) {
+        throw new Error("Unable to calculate item splits from receipt data.");
+      }
+
+      await onSubmit({
+        ...expense,
+        id: `${expense.id}-item-${index + 1}`,
+        name: itemName,
+        amount: item.price,
+        splits: itemSplits,
+      });
+    }
+
+    handleClearReceipt();
+  };
+
+  const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit: handleExpenseSubmit });
   const {
     step,
     expenseName, setExpenseName,
@@ -468,7 +522,7 @@ export function AddExpenseModal({
           {/* ---------------------------------------------------------------- */}
           {step === 3 && (
             <form
-              onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
+              onSubmit={(e) => { e.preventDefault(); void handleSubmit(); }}
               className="flex flex-1 flex-col gap-4"
             >
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -519,7 +573,7 @@ export function AddExpenseModal({
                   Back
                 </Button>
                 <Button type="submit" size="lg" className="flex-1 bg-ink-900 text-white hover:bg-ink-800 sm:mt-0">
-                  {isEditing ? "Save Changes" : "Add Expense"}
+                  {isEditing ? "Save Changes" : shouldSubmitItemized ? `Add ${ocrItems.length} Item Expenses` : "Add Expense"}
                 </Button>
               </div>
             </form>

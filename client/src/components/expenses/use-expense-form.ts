@@ -22,7 +22,7 @@ interface UseExpenseFormOptions {
   initialData?: GroupExpense | undefined;
   members: GroupMember[];
   currency: string;
-  onSubmit: (expense: GroupExpense) => void;
+  onSubmit: (expense: GroupExpense) => Promise<void> | void;
 }
 
 interface UseExpenseFormReturn {
@@ -59,7 +59,7 @@ interface UseExpenseFormReturn {
   // Handlers
   handleNextStep1: () => void;
   handleNextStep2: () => void;
-  handleSubmit: () => void;
+  handleSubmit: () => Promise<void>;
   goToStep: (s: 1 | 2 | 3) => void;
 }
 
@@ -380,7 +380,7 @@ export function useExpenseForm({
     setStep(3);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!expenseName.trim()) {
       setError("Expense name is required.");
       setStep(1);
@@ -412,8 +412,13 @@ export function useExpenseForm({
       status: initialData?.status ?? "pending",
     };
 
-    onSubmit(expense);
-    resetForm();
+    try {
+      await onSubmit(expense);
+      resetForm();
+    } catch (submissionError) {
+      const message = submissionError instanceof Error ? submissionError.message : "Failed to save expense.";
+      setError(message);
+    }
   }
 
   return {

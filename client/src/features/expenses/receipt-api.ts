@@ -31,6 +31,29 @@ export interface AssignmentData {
   assignedUserIds: number[];
 }
 
+interface RawReceiptItem {
+  itemId?: number;
+  itemName?: string;
+  name?: string;
+  price: number;
+  assignedUserIds?: number[];
+  rawText?: string;
+  confidence?: number;
+  ocrConfidence?: number;
+}
+
+function normalizeReceiptItem(item: RawReceiptItem, index: number): ReceiptItem {
+  const normalizedConfidence = item.ocrConfidence ?? item.confidence;
+  return {
+    itemId: item.itemId ?? -(index + 1),
+    itemName: item.itemName ?? item.name ?? "",
+    price: item.price,
+    assignedUserIds: item.assignedUserIds ?? [],
+    rawText: item.rawText ?? "",
+    ...(normalizedConfidence !== undefined ? { ocrConfidence: normalizedConfidence } : {}),
+  };
+}
+
 export const receiptApi = {
   async uploadReceipt(expenseId: number, file: File): Promise<ReceiptUploadResponse> {
     const formData = new FormData();
@@ -65,11 +88,11 @@ export const receiptApi = {
     const formData = new FormData();
     formData.append("receipt", file);
 
-    const response = await apiClient.post<ReceiptUploadResponse>(
+    const response = await apiClient.post<{ success: boolean; items: RawReceiptItem[] }>(
       "/api/expenses/receipt/preview",
       formData,
     );
-    return response.items;
+    return response.items.map((item, index) => normalizeReceiptItem(item, index));
   },
 
   async fileToDataURL(file: File): Promise<string> {

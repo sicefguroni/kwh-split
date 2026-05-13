@@ -1,4 +1,4 @@
-import { badRequest } from "../../utils/errors.js";
+import { badRequest, forbidden } from "../../utils/errors.js";
 import { assertGroupMember } from "../common/authorization.js";
 import { broadcastGroupChange } from "../realtime/realtime-hub.js";
 import { settlementsRepository } from "./settlements.repository.js";
@@ -40,6 +40,9 @@ export const settlementsService = {
 
   async markPaid(groupId: number, requesterId: number, input: MarkPaidInput): Promise<void> {
     await assertGroupMember(requesterId, groupId);
+    if (requesterId !== input.toUserId) {
+      throw forbidden("Only the payee can mark a member as paid");
+    }
     await assertGroupMember(input.fromUserId, groupId);
     await assertGroupMember(input.toUserId, groupId);
     if (input.fromUserId === input.toUserId) {

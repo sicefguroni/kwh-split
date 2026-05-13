@@ -107,13 +107,13 @@ export default function GroupDetailsPage() {
 
   const viewerNet = useMemo(() => {
     if (!group) return 0;
-    const vid = resolveViewerMemberId(group, user?.name);
+    const vid = resolveViewerMemberId(group, user?.name, user?.id);
     return vid ? netForMember(expenses, vid) : 0;
-  }, [group, expenses, user?.name]);
+  }, [group, expenses, user?.id, user?.name]);
 
   const balancesWithOthers = useMemo(() => {
     if (!group) return [];
-    const vid = resolveViewerMemberId(group, user?.name);
+    const vid = resolveViewerMemberId(group, user?.name, user?.id);
     if (!vid) return [];
     return group.members
       .filter((m) => m.id !== vid)
@@ -122,7 +122,7 @@ export default function GroupDetailsPage() {
         name: m.name,
         netOwesYou: netMemberOwesViewer(expenses, vid, m.id),
       }));
-  }, [group, expenses, user?.name]);
+  }, [group, expenses, user?.id, user?.name]);
 
   const groupedExpenses = useMemo(() => {
     const map = new Map<string, GroupExpense[]>();
@@ -708,9 +708,12 @@ export default function GroupDetailsPage() {
 
         {/* MEMBERS */}
         {activeTab === "members" && (
-          <div className="">
+          <div className="space-y-3">
             {group.members.map((member) => (
-              <div key={member.id} className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+              <div
+                key={member.id}
+                className="flex items-center justify-between rounded-3xl border border-slate-200 bg-white px-4 py-3"
+              >
                 <div className="flex items-center gap-3">
                   <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-200 text-sm font-bold text-slate-700">
                     {member.name.charAt(0)}
