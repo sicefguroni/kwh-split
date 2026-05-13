@@ -3,3 +3,5 @@ packages:
   - "server"
 allowBuilds:
   esbuild: false
+  sharp: false
+  tesseract.js: false
