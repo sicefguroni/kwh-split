@@ -19,11 +19,23 @@ export interface GroupMember {
   name: string;
   email?: string;
   isAdmin: boolean;
+  isActive: boolean;
+  discountType?: string;
 }
 
 export interface GroupExpenseSplit {
   memberId: string;
   amount: number;
+  percentage?: number;
+  share?: number;
+  isSettled?: boolean;
+}
+
+export interface GroupExpenseItem {
+  id: string;
+  itemName: string;
+  price: number;
+  assignedUserIds: string[];
 }
 
 export interface GroupExpense {
@@ -37,6 +49,7 @@ export interface GroupExpense {
   category?: string;
   splitType?: "equal" | "percentage" | "shares" | "exact" | "itemized";
   splits: GroupExpenseSplit[];
+  receiptItems?: GroupExpenseItem[];
   memberDiscounts?: Array<{ memberId: string; type: "none" | "pwd" | "senior" }>;
   status: "pending" | "synced";
 }
@@ -61,9 +74,9 @@ export const DEFAULT_GROUPS: GroupData[] = [
     currency: "₱",
     imageUrl: "https://images.unsplash.com/photo-1518509562904-e7ef99cdcc86?w=400&q=80",
     members: [
-      { id: "1", name: "George", isAdmin: true },
-      { id: "2", name: "Alice", isAdmin: false },
-      { id: "3", name: "May", isAdmin: false },
+      { id: "1", name: "George", isAdmin: true, isActive: true },
+      { id: "2", name: "Alice", isAdmin: false, isActive: true },
+      { id: "3", name: "May", isAdmin: false, isActive: true },
     ],
     balance: 1750.0,
     createdAt: new Date().toISOString(),
@@ -74,8 +87,8 @@ export const DEFAULT_GROUPS: GroupData[] = [
     description: "Utang with the crew",
     currency: "₱",
     members: [
-      { id: "1", name: "George", isAdmin: true },
-      { id: "4", name: "John", isAdmin: false },
+      { id: "1", name: "George", isAdmin: true, isActive: true },
+      { id: "4", name: "John", isAdmin: false, isActive: true },
     ],
     balance: -4520.5,
     createdAt: new Date().toISOString(),
