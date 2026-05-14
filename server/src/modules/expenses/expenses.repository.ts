@@ -16,6 +16,8 @@ export interface ExpenseRecord {
   tax_amount: string;
   tip_amount: string;
   split_type: string;
+  category: string;
+  note: string;
   receipt_items_flag: boolean;
   receipt_image_url: string | null;
   created_at: Date;
@@ -50,7 +52,7 @@ export interface ExpenseMemberDiscountRecord {
 export const expensesRepository = {
   async listGroupMemberIds(groupId: number): Promise<number[]> {
     const { rows } = await pool.query<{ user_id: number }>(
-      `SELECT user_id FROM group_members WHERE group_id = $1 ORDER BY user_id`,
+      `SELECT user_id FROM group_members WHERE group_id = $1 AND is_active = TRUE ORDER BY user_id`,
       [groupId],
     );
     return rows.map((row) => row.user_id);
@@ -67,8 +69,8 @@ export const expensesRepository = {
       await client.query("BEGIN");
       const expenseResult = await client.query<{ expense_id: number }>(
         `INSERT INTO expenses
-          (group_id, title_description, total_amount, sale_date, tax_amount, tip_amount, split_type, receipt_items_flag, payer_user_id)
-         VALUES ($1, $2, $3::numeric(10,2), $4::date, $5::numeric(10,2), $6::numeric(10,2), $7, $8, $9)
+          (group_id, title_description, total_amount, sale_date, tax_amount, tip_amount, split_type, category, note, receipt_items_flag, payer_user_id)
+         VALUES ($1, $2, $3::numeric(10,2), $4::date, $5::numeric(10,2), $6::numeric(10,2), $7, $8, $9, $10, $11)
          RETURNING expense_id`,
         [
           input.expense.groupId,
@@ -78,6 +80,8 @@ export const expensesRepository = {
           input.expense.taxAmount,
           input.expense.tipAmount,
           input.expense.splitType,
+          input.expense.category ?? "General",
+          input.expense.note ?? "",
           input.receiptItems.length > 0,
           input.expense.paidByUserId ?? null,
         ],
@@ -89,8 +93,8 @@ export const expensesRepository = {
 
       for (const split of input.splits) {
         await client.query(
-          `INSERT INTO expense_splits (expense_id, user_id, amount_owed, percentage, share)
-           VALUES ($1, $2, $3::numeric(10,2), $4, $5::numeric(10,2))`,
+          `INSERT INTO expense_splits (expense_id, user_id, amount_owed, original_amount, percentage, share)
+           VALUES ($1, $2, $3::numeric(10,2), $3::numeric(10,2), $4, $5::numeric(10,2))`,
           [expenseId, split.userId, split.amountOwed, split.percentage, split.share],
         );
       }
@@ -161,10 +165,12 @@ export const expensesRepository = {
              tax_amount = $5::numeric(10,2),
              tip_amount = $6::numeric(10,2),
              split_type = $7,
-             receipt_items_flag = $8,
-             payer_user_id = $9,
+             category = $8,
+             note = $9,
+             receipt_items_flag = $10,
+             payer_user_id = $11,
              updated_at = CURRENT_TIMESTAMP
-         WHERE expense_id = $10`,
+         WHERE expense_id = $12`,
         [
           input.expense.groupId,
           input.expense.titleDescription,
@@ -173,6 +179,8 @@ export const expensesRepository = {
           input.expense.taxAmount,
           input.expense.tipAmount,
           input.expense.splitType,
+          input.expense.category ?? "General",
+          input.expense.note ?? "",
           input.receiptItems.length > 0,
           input.expense.paidByUserId ?? null,
           input.expenseId,
@@ -183,15 +191,38 @@ export const expensesRepository = {
         return false;
       }
 
+      const { rows: oldSplits } = await client.query<{
+        user_id: number;
+        amount_owed: string;
+        original_amount: string | null;
+        is_settled: boolean;
+      }>(
+        `SELECT user_id, amount_owed::text, original_amount::text, is_settled
+         FROM expense_splits WHERE expense_id = $1`,
+        [input.expenseId],
+      );
+      const paidByUser = new Map<number, number>();
+      for (const old of oldSplits) {
+        const originalAmt = old.original_amount ? Number(old.original_amount) : Number(old.amount_owed);
+        const currentOwed = Number(old.amount_owed);
+        const paid = originalAmt - currentOwed;
+        if (paid > 0) {
+          paidByUser.set(old.user_id, paid);
+        }
+      }
+
       await client.query(`DELETE FROM expense_splits WHERE expense_id = $1`, [input.expenseId]);
       await client.query(`DELETE FROM receipt_items WHERE expense_id = $1`, [input.expenseId]);
       await client.query(`DELETE FROM expense_member_discounts WHERE expense_id = $1`, [input.expenseId]);
 
       for (const split of input.splits) {
+        const alreadyPaid = paidByUser.get(split.userId) ?? 0;
+        const adjustedOwed = Math.max(0, Number((split.amountOwed - alreadyPaid).toFixed(2)));
+        const isSettled = adjustedOwed <= 0 && alreadyPaid > 0;
         await client.query(
-          `INSERT INTO expense_splits (expense_id, user_id, amount_owed, percentage, share)
-           VALUES ($1, $2, $3::numeric(10,2), $4, $5::numeric(10,2))`,
-          [input.expenseId, split.userId, split.amountOwed, split.percentage, split.share],
+          `INSERT INTO expense_splits (expense_id, user_id, amount_owed, original_amount, percentage, share, is_settled)
+           VALUES ($1, $2, $3::numeric(10,2), $4::numeric(10,2), $5, $6::numeric(10,2), $7)`,
+          [input.expenseId, split.userId, adjustedOwed, split.amountOwed, split.percentage, split.share, isSettled],
         );
       }
       for (const item of input.receiptItems) {
@@ -244,8 +275,8 @@ export const expensesRepository = {
   async listByGroup(groupId: number): Promise<ExpenseRecord[]> {
     const { rows } = await pool.query<ExpenseRecord>(
       `SELECT expense_id, group_id, title_description, total_amount::text, sale_date::text,
-              payer_user_id, tax_amount::text, tip_amount::text, split_type, receipt_items_flag, receipt_image_url,
-              created_at, updated_at
+              payer_user_id, tax_amount::text, tip_amount::text, split_type, category, note,
+              receipt_items_flag, receipt_image_url, created_at, updated_at
        FROM expenses
        WHERE group_id = $1
        ORDER BY sale_date DESC, expense_id DESC`,
@@ -308,6 +339,17 @@ export const expensesRepository = {
       [expenseId, groupId],
     );
     return rows.length > 0;
+  },
+
+  async findById(expenseId: number): Promise<ExpenseRecord | null> {
+    const { rows } = await pool.query<ExpenseRecord>(
+      `SELECT expense_id, group_id, title_description, total_amount::text, sale_date::text,
+              payer_user_id, tax_amount::text, tip_amount::text, split_type, category, note,
+              receipt_items_flag, receipt_image_url, created_at, updated_at
+       FROM expenses WHERE expense_id = $1`,
+      [expenseId],
+    );
+    return rows[0] ?? null;
   },
 
   async findGroupIdByExpenseId(expenseId: number): Promise<number | null> {
