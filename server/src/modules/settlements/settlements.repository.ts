@@ -68,17 +68,21 @@ export const settlementsRepository = {
     return Number(rows[0]?.unsettled_amount ?? "0");
   },
 
-  async markPaidAndSettleSplits(groupId: number, input: MarkPaidInput): Promise<void> {
+  async markPaidAndSettleSplits(
+    groupId: number,
+    input: MarkPaidInput,
+  ): Promise<{ expenseTitles: string[]; remainingBalance: number }> {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       let remaining = input.amount;
       const unsettled = await client.query<{
         split_id: number;
+        expense_id: number;
         amount_owed: string;
         title_description: string;
       }>(
-        `SELECT es.split_id, es.amount_owed::text, e.title_description
+        `SELECT es.split_id, e.expense_id, es.amount_owed::text, e.title_description
          FROM expense_splits es
          INNER JOIN expenses e ON e.expense_id = es.expense_id
          WHERE e.group_id = $1
@@ -88,12 +92,12 @@ export const settlementsRepository = {
         [groupId, input.fromUserId],
       );
 
-      const relatedExpenseTitles = new Set<string>();
+      const relatedExpenses = new Map<number, string>();
       for (const split of unsettled.rows) {
         if (remaining <= 0.00001) {
           break;
         }
-        relatedExpenseTitles.add(split.title_description);
+        relatedExpenses.set(split.expense_id, split.title_description);
         const amount = Number(split.amount_owed);
         if (remaining + 0.00001 >= amount) {
           await client.query(
@@ -119,9 +123,11 @@ export const settlementsRepository = {
         remaining = 0;
       }
 
+      const expenseIds = Array.from(relatedExpenses.keys());
+      const expenseTitles = Array.from(relatedExpenses.values());
       const autoNote =
-        relatedExpenseTitles.size > 0
-          ? `For: ${Array.from(relatedExpenseTitles).join(", ")}`
+        expenseIds.length > 0
+          ? `For: ${expenseTitles.join(", ")} [expenses:${expenseIds.join(",")}]`
           : "For: manual settlement";
       const note = input.note?.trim() || autoNote;
       await client.query(
@@ -155,7 +161,19 @@ export const settlementsRepository = {
           input.paidAt ?? new Date().toISOString(),
         ],
       );
+      const { rows: balanceRows } = await client.query<{ remaining: string }>(
+        `SELECT COALESCE(SUM(es.amount_owed), 0)::text AS remaining
+         FROM expense_splits es
+         INNER JOIN expenses e ON e.expense_id = es.expense_id
+         WHERE e.group_id = $1 AND es.user_id = $2 AND es.is_settled = FALSE`,
+        [groupId, input.fromUserId],
+      );
+
       await client.query("COMMIT");
+      return {
+        expenseTitles: expenseTitles,
+        remainingBalance: Number(balanceRows[0]?.remaining ?? 0),
+      };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

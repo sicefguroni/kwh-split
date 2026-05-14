@@ -1,6 +1,9 @@
 import { badRequest, forbidden } from "../../utils/errors.js";
 import { assertGroupMember } from "../common/authorization.js";
-import { broadcastGroupChange } from "../realtime/realtime-hub.js";
+import { broadcastGroupChange, broadcastInvitationChange } from "../realtime/realtime-hub.js";
+import { groupsRepository } from "../groups/groups.repository.js";
+import { userRepository } from "../auth/auth.repository.js";
+import { displayName } from "../../utils/display-name.js";
 import { settlementsRepository } from "./settlements.repository.js";
 import type { MarkPaidInput } from "./settlements.schemas.js";
 
@@ -48,8 +51,42 @@ export const settlementsService = {
     if (input.fromUserId === input.toUserId) {
       throw badRequest("fromUserId and toUserId must be different", "invalid_settlement");
     }
-    await settlementsRepository.markPaidAndSettleSplits(groupId, input);
+    const result = await settlementsRepository.markPaidAndSettleSplits(groupId, input);
     broadcastGroupChange(groupId);
+
+    void (async () => {
+      try {
+        const [members, user, group] = await Promise.all([
+          groupsRepository.listMembers(groupId),
+          userRepository.findById(requesterId),
+          groupsRepository.findById(groupId),
+        ]);
+        if (!user || !group) return;
+        const userName = displayName(user, members);
+
+        if (result.expenseTitles.length > 0) {
+          for (const expenseTitle of result.expenseTitles) {
+            await groupsRepository.createNotification({
+              groupId,
+              userId: input.fromUserId,
+              type: "settlement_paid",
+              title: "Settlement received",
+              message: `${userName} settled a payment for ${expenseTitle} in ${group.name}.`,
+            });
+          }
+        } else {
+          const amount = `${group.currency} ${Number(input.amount).toFixed(2)}`;
+          await groupsRepository.createNotification({
+            groupId,
+            userId: input.fromUserId,
+            type: "settlement_paid",
+            title: "Settlement received",
+            message: `${userName} settled ${amount} in ${group.name}.`,
+          });
+        }
+        broadcastInvitationChange(input.fromUserId);
+      } catch { /* fire-and-forget */ }
+    })();
   },
 
   async history(groupId: number, requesterId: number): Promise<SettlementHistoryEntry[]> {
