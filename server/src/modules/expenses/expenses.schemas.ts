@@ -19,7 +19,7 @@ export const MemberDiscountSchema = z.object({
 export const ReceiptItemSchema = z.object({
   itemName: z.string().trim().min(1).max(255),
   price: z.coerce.number().positive(),
-  assignedUserIds: z.array(z.coerce.number().int().positive()).min(1),
+  assignedUserIds: z.array(z.coerce.number().int().positive()).default([]),
 });
 
 export const ExpenseWriteSchema = z.object({
@@ -31,6 +31,8 @@ export const ExpenseWriteSchema = z.object({
   taxAmount: z.coerce.number().min(0).default(0),
   tipAmount: z.coerce.number().min(0).default(0),
   splitType: SplitTypeSchema.default("equal"),
+  category: z.string().trim().max(100).optional(),
+  note: z.string().trim().max(2000).optional(),
   participantUserIds: z.array(z.coerce.number().int().positive()).optional(),
   splits: z.array(SplitEntrySchema).optional(),
   receiptItems: z.array(ReceiptItemSchema).optional(),
