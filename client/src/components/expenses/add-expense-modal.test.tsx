@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { AddExpenseModal } from "./add-expense-modal";
 
 const members = [
-  { id: "1", name: "Alice", isAdmin: true },
-  { id: "2", name: "Bob", isAdmin: false },
-  { id: "3", name: "Cara", isAdmin: false },
+  { id: "1", name: "Alice", isAdmin: true, isActive: true },
+  { id: "2", name: "Bob", isAdmin: false, isActive: true },
+  { id: "3", name: "Cara", isAdmin: false, isActive: true },
 ];
 
 function renderModal() {

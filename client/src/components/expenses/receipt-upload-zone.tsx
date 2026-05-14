@@ -71,6 +71,20 @@ export function ReceiptUploadZone({
     return validTypes.includes(file.type) && file.size <= maxSize;
   };
 
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-blue-300 bg-blue-50 p-8">
+          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-blue-200 border-t-blue-600" />
+          <div className="text-center">
+            <p className="text-sm font-medium text-blue-900">Scanning receipt...</p>
+            <p className="mt-0.5 text-xs text-blue-600">Extracting items with OCR</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (preview) {
     return (
       <div className="space-y-3">
@@ -83,8 +97,7 @@ export function ReceiptUploadZone({
           <button
             type="button"
             onClick={onClear}
-            disabled={isLoading}
-            className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 hover:bg-white disabled:opacity-50"
+            className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 hover:bg-white"
             aria-label="Remove image"
           >
             <X className="h-5 w-5 text-gray-900" />

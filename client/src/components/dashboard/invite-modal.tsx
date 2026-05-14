@@ -275,7 +275,9 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
                               ? "rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800"
                               : invitation.status === "declined"
                                 ? "rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-700"
-                                : "rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700"
+                                : invitation.status === "left"
+                                  ? "rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-orange-800"
+                                  : "rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700"
                         }
                       >
                         {invitation.status}

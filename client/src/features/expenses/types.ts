@@ -16,6 +16,7 @@ export interface ApiExpense {
   saleDate: string;
   taxAmount: number;
   tipAmount: number;
+  category: string;
   note: string;
   splitType: string;
   splits: ApiExpenseSplit[];

@@ -19,6 +19,10 @@ export const groupsApi = {
   update: (id: string, input: { name: string; description?: string | undefined; currency: string; imageUrl?: string | undefined }) =>
     apiClient.put<GroupResponse>(`/api/groups/${id}`, input),
   remove: (id: string) => apiClient.delete<void>(`/api/groups/${id}`),
+  leave: (id: string, input?: { newAdminUserId?: number }) =>
+    apiClient.post<void>(`/api/groups/${id}/leave`, input),
+  promoteToAdmin: (id: string, targetUserId: number) =>
+    apiClient.post<void>(`/api/groups/${id}/promote`, { targetUserId }),
   join: (id: string, input: { userId?: number; userName?: string }) =>
     apiClient.post<void>(`/api/groups/${id}/join`, input),
 
@@ -30,6 +34,8 @@ export const groupsApi = {
   listIncomingInvitations: () => apiClient.get<InvitationsResponse>("/api/groups/invitations/incoming"),
   listNotifications: () => apiClient.get<NotificationsResponse>("/api/groups/notifications"),
   markNotificationsRead: () => apiClient.post<void>("/api/groups/notifications/read"),
+  clearNotifications: (category?: "invitations" | "activity") =>
+    apiClient.delete<void>(`/api/groups/notifications${category ? `?category=${category}` : ""}`),
   acceptIncomingInvitation: (invitationId: string) =>
     apiClient.post<JoinGroupResponse>(`/api/groups/invitations/${invitationId}/accept`),
   declineIncomingInvitation: (invitationId: string) =>
@@ -47,4 +53,5 @@ export const groupsApi = {
   previewInviteToken: (token: string) => apiClient.get<InvitePreviewResponse>(`/api/groups/join/${token}`),
   acceptInviteToken: (token: string) => apiClient.post<JoinGroupResponse>(`/api/groups/join/${token}`),
   acceptInvitation: (token: string) => apiClient.post<JoinGroupResponse>("/api/groups/accept-invitation", { token }),
+
 };

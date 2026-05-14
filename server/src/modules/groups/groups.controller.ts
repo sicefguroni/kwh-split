@@ -101,6 +101,37 @@ export const groupsController = {
     }
   },
 
+  async leave(req: Request<{ id: string }>, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const requesterId = parseSubjectUserId(getAuthenticatedUserId(req));
+      const groupId = parsePositiveInt(req.params.id ?? "", "id");
+      const body = req.body as { newAdminUserId?: number } | undefined;
+      const newAdminUserId =
+        body?.newAdminUserId !== undefined ? Number(body.newAdminUserId) : undefined;
+      await groupsService.leaveGroup(groupId, requesterId, newAdminUserId);
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async promoteToAdmin(req: Request<{ id: string }>, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const requesterId = parseSubjectUserId(getAuthenticatedUserId(req));
+      const groupId = parsePositiveInt(req.params.id ?? "", "id");
+      const body = req.body as { targetUserId?: number } | undefined;
+      const targetUserId = Number(body?.targetUserId);
+      if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+        res.status(400).json({ error: "targetUserId is required" });
+        return;
+      }
+      await groupsService.promoteToAdmin(groupId, requesterId, targetUserId);
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async createInvitations(
     req: TypedBody<CreateInvitationsInput> & Request<{ id: string }>,
     res: Response,
@@ -151,6 +182,17 @@ export const groupsController = {
     try {
       const userId = parseSubjectUserId(getAuthenticatedUserId(req));
       await groupsService.markNotificationsRead(userId);
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async clearNotifications(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = parseSubjectUserId(getAuthenticatedUserId(req));
+      const category = req.query.category as "invitations" | "activity" | undefined;
+      await groupsService.clearNotifications(userId, category);
       res.status(204).end();
     } catch (error) {
       next(error);
@@ -237,4 +279,5 @@ export const groupsController = {
       next(error);
     }
   },
+
 };

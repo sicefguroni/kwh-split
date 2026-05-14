@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { HttpError } from "../../utils/errors.js";
-import { calculateExpenseDetails } from "./expenses.calculations.js";
+import { calculateExpenseDetails, calculateTaxAndTipDistribution } from "./expenses.calculations.js";
 import type { ExpenseWriteInput } from "./expenses.schemas.js";
 
 test("applies PWD discount to eligible member only", () => {
@@ -139,8 +139,6 @@ test("itemized split allocates tax and tip proportionally", () => {
 });
 
 test("tax and tip distribution - proportional allocation", () => {
-  const { calculateTaxAndTipDistribution } = require("./expenses.calculations.js");
-
   const result = calculateTaxAndTipDistribution(
     100, // subtotal
     10, // tax
@@ -163,8 +161,6 @@ test("tax and tip distribution - proportional allocation", () => {
 });
 
 test("tax and tip distribution - equal split", () => {
-  const { calculateTaxAndTipDistribution } = require("./expenses.calculations.js");
-
   const result = calculateTaxAndTipDistribution(
     100, // subtotal
     10, // tax
@@ -184,8 +180,6 @@ test("tax and tip distribution - equal split", () => {
 });
 
 test("tax and tip distribution - no loss in rounding", () => {
-  const { calculateTaxAndTipDistribution } = require("./expenses.calculations.js");
-
   const result = calculateTaxAndTipDistribution(
     123.45,
     11.11,

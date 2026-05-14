@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSignupMutation } from "@/features/auth/use-auth";
 import { SignupFormSchema, type SignupFormValues } from "@/features/auth/schemas";
@@ -86,8 +87,7 @@ export function SignupForm() {
         hint="At least 8 characters with upper, lower, and a number"
         error={errors.password?.message}
       >
-        <Input
-          type="password"
+        <PasswordInput
           autoComplete="new-password"
           placeholder="Create a password"
           icon={<Lock />}
@@ -96,8 +96,7 @@ export function SignupForm() {
       </Field>
 
       <Field label="Confirm password" error={errors.confirmPassword?.message}>
-        <Input
-          type="password"
+        <PasswordInput
           autoComplete="new-password"
           placeholder="Re-enter your password"
           icon={<ShieldCheck />}

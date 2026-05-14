@@ -2,7 +2,10 @@ import { badRequest } from "../../utils/errors.js";
 import { assertGroupMember } from "../common/authorization.js";
 import { calculateExpenseDetails } from "./expenses.calculations.js";
 import { expensesRepository } from "./expenses.repository.js";
-import { broadcastGroupChange } from "../realtime/realtime-hub.js";
+import { groupsRepository } from "../groups/groups.repository.js";
+import { userRepository } from "../auth/auth.repository.js";
+import { broadcastGroupChange, broadcastInvitationChange } from "../realtime/realtime-hub.js";
+import { displayName } from "../../utils/display-name.js";
 import type { ExpenseWriteInput } from "./expenses.schemas.js";
 
 interface PublicExpenseSplit {
@@ -38,6 +41,8 @@ export interface PublicExpense {
   taxAmount: number;
   tipAmount: number;
   splitType: string;
+  category: string;
+  note: string;
   splits: PublicExpenseSplit[];
   receiptItems: PublicReceiptItem[];
   memberDiscounts: PublicMemberDiscount[];
@@ -63,6 +68,8 @@ const toPublicExpense = async (
     taxAmount: Number(record.tax_amount),
     tipAmount: Number(record.tip_amount),
     splitType: record.split_type,
+    category: record.category ?? "General",
+    note: record.note ?? "",
     splits: splits.map((split) => ({
       id: String(split.split_id),
       userId: String(split.user_id),
@@ -103,6 +110,32 @@ export const expensesService = {
       memberDiscounts: calculated.memberDiscounts,
     });
     broadcastGroupChange(input.groupId);
+
+    void (async () => {
+      try {
+        const [members, user, group] = await Promise.all([
+          groupsRepository.listMembers(input.groupId),
+          userRepository.findById(requesterUserId),
+          groupsRepository.findById(input.groupId),
+        ]);
+        if (!user || !group) return;
+        const userName = displayName(user, members);
+        const title = input.titleDescription;
+        const amount = `${group.currency} ${Number(input.totalAmount).toFixed(2)}`;
+        for (const m of members) {
+          if (m.user_id === requesterUserId) continue;
+          await groupsRepository.createNotification({
+            groupId: input.groupId,
+            userId: m.user_id,
+            type: "expense_added",
+            title: "New expense added",
+            message: `${userName} added ${title} (${amount}) in ${group.name}.`,
+          });
+          broadcastInvitationChange(m.user_id);
+        }
+      } catch { /* fire-and-forget */ }
+    })();
+
     return String(expenseId);
   },
 
@@ -137,15 +170,40 @@ export const expensesService = {
   },
 
   async remove(expenseId: number, requesterUserId: number): Promise<void> {
-    const groupId = await expensesRepository.findGroupIdByExpenseId(expenseId);
-    if (!groupId) {
+    const expense = await expensesRepository.findById(expenseId);
+    if (!expense) {
       throw badRequest("Expense not found", "expense_not_found");
     }
+    const groupId = expense.group_id;
     await assertGroupMember(requesterUserId, groupId);
     const deleted = await expensesRepository.deleteById(expenseId);
     if (!deleted) {
       throw badRequest("Expense not found", "expense_not_found");
     }
     broadcastGroupChange(groupId);
+
+    void (async () => {
+      try {
+        const [members, user, group] = await Promise.all([
+          groupsRepository.listMembers(groupId),
+          userRepository.findById(requesterUserId),
+          groupsRepository.findById(groupId),
+        ]);
+        if (!user || !group) return;
+        const userName = displayName(user, members);
+        const title = expense.title_description;
+        for (const m of members) {
+          if (m.user_id === requesterUserId) continue;
+          await groupsRepository.createNotification({
+            groupId,
+            userId: m.user_id,
+            type: "expense_deleted",
+            title: "Expense removed",
+            message: `${userName} removed ${title} from ${group.name}.`,
+          });
+          broadcastInvitationChange(m.user_id);
+        }
+      } catch { /* fire-and-forget */ }
+    })();
   },
 };

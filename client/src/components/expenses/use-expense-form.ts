@@ -409,7 +409,15 @@ export function useExpenseForm({
       splitType,
       splits: Object.entries(computedSplits)
         .filter(([, amt]) => amt > 0)
-        .map(([memberId, amt]) => ({ memberId, amount: amt })),
+        .map(([memberId, amt]) => {
+          const raw = parseFloat(memberSplitInputs[memberId]?.amount ?? "0");
+          return {
+            memberId,
+            amount: amt,
+            ...(splitType === "percentage" && { percentage: raw }),
+            ...(splitType === "shares" && { share: raw }),
+          };
+        }),
       memberDiscounts: Object.entries(memberSplitInputs)
         .filter(([, split]) => split.selected)
         .map(([memberId, split]) => ({
