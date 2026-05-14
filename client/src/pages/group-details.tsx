@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Edit3, MoreVertical, Plus, Trash2, WifiOff } from "lucide-react";
+import { ArrowLeft, Edit3, LogOut, MoreVertical, Plus, Trash2, UserPlus, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AddExpenseModal } from "@/components/expenses/add-expense-modal";
 import { EditGroupModal, type GroupFormSubmission } from "@/components/dashboard/add-group-modal";
+import { InviteModal } from "@/components/dashboard/invite-modal";
+import { NotificationCenter } from "@/components/dashboard/notification-center";
 import { GroupCoverBackground } from "@/components/dashboard/group-media";
+import { useToast } from "@/components/ui/toast";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
 import { type GroupData, type GroupExpense } from "@/hooks/use-groups";
 import { useCurrentUser } from "@/features/auth/use-auth";
@@ -15,7 +18,9 @@ import {
   useExpensesQuery,
   useUpdateExpenseMutation,
 } from "@/features/expenses/use-expenses";
-import { useGroupQuery, useUpdateGroupMutation } from "@/features/groups/use-groups";
+import { useQueryClient } from "@tanstack/react-query";
+import { useGroupQuery, useLeaveGroupMutation, usePromoteToAdminMutation, useUpdateGroupMutation } from "@/features/groups/use-groups";
+import { groupsApi } from "@/features/groups/api";
 import { Spinner } from "@/components/ui/spinner";
 import {
   netForMember,
@@ -41,7 +46,11 @@ export default function GroupDetailsPage() {
   const updateExpenseMutation = useUpdateExpenseMutation(groupId);
   const deleteExpenseMutation = useDeleteExpenseMutation(groupId);
   const updateGroupMutation = useUpdateGroupMutation();
+  const leaveGroupMutation = useLeaveGroupMutation();
+  const promoteToAdminMutation = usePromoteToAdminMutation();
+  const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
+  const { addToast } = useToast();
 
   const group: GroupData | undefined = useMemo(
     () =>
@@ -71,12 +80,22 @@ export default function GroupDetailsPage() {
         paidBy: expense.paidByUserId ?? "",
         date: expense.saleDate,
         note: expense.note ?? "",
+        category: expense.category ?? "General",
         ...(expense.splitType && {
           splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
         }),
         splits: expense.splits.map((split) => ({
           memberId: split.userId,
           amount: split.amountOwed,
+          ...(split.percentage != null && { percentage: split.percentage }),
+          ...(split.share != null && { share: split.share }),
+          isSettled: split.isSettled,
+        })),
+        receiptItems: (expense.receiptItems ?? []).map((item) => ({
+          id: item.id,
+          itemName: item.itemName,
+          price: item.price,
+          assignedUserIds: item.assignedUserIds,
         })),
         memberDiscounts: (expense.memberDiscounts ?? []).map((discount) => ({
           memberId: discount.userId,
@@ -90,6 +109,10 @@ export default function GroupDetailsPage() {
   const [activeTab, setActiveTab] = useState<"expenses" | "balances" | "members">("expenses");
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isEditGroupOpen, setIsEditGroupOpen] = useState(false);
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
+  const [newAdminId, setNewAdminId] = useState<string>("");
   const [selectedExpense, setSelectedExpense] = useState<GroupExpense | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -196,40 +219,64 @@ export default function GroupDetailsPage() {
     };
   }, [openMenuId]);
 
-  if (!group) {
-    if (isGroupLoading) {
-      return (
-        <div className="flex min-h-screen items-center justify-center">
-          <Spinner />
-        </div>
-      );
+  useEffect(() => {
+    if (!isGroupLoading && isGroupError) {
+      navigate("/dashboard", { replace: true });
     }
+  }, [isGroupLoading, isGroupError, navigate]);
+
+  if (!group) {
     return (
-      <div className="min-h-screen bg-white p-6">
-        <Button variant="secondary" size="sm" onClick={() => navigate(-1)}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back
-        </Button>
-        <div className="mt-10 rounded-3xl border border-slate-200 bg-slate-50 p-8 text-center">
-          <h1 className="text-xl font-semibold text-slate-900">Group not found</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            {isGroupError ? "This group may have been removed or the link is invalid." : "Loading group…"}
-          </p>
-        </div>
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner />
       </div>
     );
   }
 
-  const handleSaveGroup = (submission: GroupFormSubmission) => {
+  const handleSaveGroup = async (submission: GroupFormSubmission) => {
     if (!group) return;
 
-    void updateGroupMutation.mutateAsync({
-      id: group.id,
-      name: submission.name,
-      description: submission.description,
-      currency: submission.currency,
-      imageUrl: submission.imageUrl,
-    });
-    setIsEditGroupOpen(false);
+    setIsSavingGroup(true);
+    try {
+      const updatedGroup = await updateGroupMutation.mutateAsync({
+        id: group.id,
+        name: submission.name,
+        description: submission.description,
+        currency: submission.currency,
+        imageUrl: submission.imageUrl,
+      });
+
+      if (submission.inviteRecipients.length > 0) {
+        await groupsApi.createInvitations(updatedGroup.id, {
+          recipients: submission.inviteRecipients.map((recipient) =>
+            recipient.userId
+              ? { userId: Number(recipient.userId) }
+              : { email: recipient.email },
+          ),
+        });
+
+        await queryClient.invalidateQueries({ queryKey: ["group-invitations", updatedGroup.id] });
+        await queryClient.invalidateQueries({ queryKey: ["incoming-invitations"] });
+      }
+    } finally {
+      setIsSavingGroup(false);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!group) return;
+    const isAdmin = group.role === "admin";
+    try {
+      await leaveGroupMutation.mutateAsync({
+        id: group.id,
+        ...(isAdmin && newAdminId ? { newAdminUserId: Number(newAdminId) } : {}),
+      });
+      addToast(`You left ${group.name}`, "success");
+    } finally {
+      setIsLeaveConfirmOpen(false);
+      setNewAdminId("");
+      navigate("/dashboard", { replace: true });
+    }
   };
 
   const toExpensePayload = (expense: GroupExpense) => ({
@@ -247,6 +294,13 @@ export default function GroupDetailsPage() {
     splits: expense.splits.map((split) => ({
       userId: Number(split.memberId),
       amount: split.amount,
+      ...(split.percentage != null && { percentage: split.percentage }),
+      ...(split.share != null && { share: split.share }),
+    })),
+    receiptItems: (expense.receiptItems ?? []).map((item) => ({
+      itemName: item.itemName,
+      price: item.price,
+      assignedUserIds: item.assignedUserIds.map(Number),
     })),
     memberDiscounts: (expense.memberDiscounts ?? []).map((entry) => ({
       userId: Number(entry.memberId),
@@ -255,16 +309,28 @@ export default function GroupDetailsPage() {
   });
 
   const handleAddExpense = async (expense: GroupExpense) => {
-    await createExpenseMutation.mutateAsync(toExpensePayload(expense));
+    try {
+      await createExpenseMutation.mutateAsync(toExpensePayload(expense));
+      addToast("Expense added", "success");
+    } catch {
+      addToast("Failed to add expense", "error");
+      throw new Error("Failed to add expense");
+    }
     setSelectedExpense(null);
     setIsAddExpenseOpen(false);
   };
 
   const handleEditExpense = async (expense: GroupExpense) => {
-    await updateExpenseMutation.mutateAsync({
-      expenseId: expense.id,
-      payload: toExpensePayload(expense),
-    });
+    try {
+      await updateExpenseMutation.mutateAsync({
+        expenseId: expense.id,
+        payload: toExpensePayload(expense),
+      });
+      addToast("Expense updated", "success");
+    } catch {
+      addToast("Failed to update expense", "error");
+      throw new Error("Failed to update expense");
+    }
     setSelectedExpense(null);
     setIsAddExpenseOpen(false);
   };
@@ -276,7 +342,12 @@ export default function GroupDetailsPage() {
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
-    await deleteExpenseMutation.mutateAsync({ expenseId });
+    try {
+      await deleteExpenseMutation.mutateAsync({ expenseId });
+      addToast("Expense deleted", "error");
+    } catch {
+      addToast("Failed to delete expense", "error");
+    }
     setOpenMenuId(null);
     setSwipedId(null);
   };
@@ -334,13 +405,27 @@ export default function GroupDetailsPage() {
                     <WifiOff className="h-4 w-4" aria-hidden />
                   </span>
                 ) : null}
+              <NotificationCenter variant="dark" />
+              {group.role === "admin" ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditGroupOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-xs font-semibold text-white ring-1 ring-white/15 transition hover:bg-white/20"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  Edit
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setIsEditGroupOpen(true)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/15 transition hover:bg-white/20"
-                aria-label="Edit group"
+                onClick={() => {
+                  setNewAdminId("");
+                  setIsLeaveConfirmOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3.5 py-2 text-xs font-semibold text-white ring-1 ring-white/15 transition hover:bg-white/20"
               >
-                <Edit3 className="h-4 w-4" />
+                <LogOut className="h-3.5 w-3.5" />
+                Leave
               </button>
             </div>
           </div>
@@ -417,7 +502,7 @@ export default function GroupDetailsPage() {
               [
                 { id: "expenses", label: "Expenses", count: expenses.length },
                 { id: "balances", label: "Balances", count: null },
-                { id: "members", label: "Members", count: group.members.length },
+                { id: "members", label: "Members", count: group.members.filter((m) => m.isActive).length },
               ] as const
             ).map((tab) => (
               <button
@@ -594,6 +679,7 @@ export default function GroupDetailsPage() {
                 </div>
               ))
             )}
+
           </div>
         )}
 
@@ -711,7 +797,16 @@ export default function GroupDetailsPage() {
         {/* MEMBERS */}
         {activeTab === "members" && (
           <div className="space-y-3">
-            {group.members.map((member) => (
+            {group.role === "admin" && (
+              <Button
+                className="w-full gap-2"
+                onClick={() => setIsInviteOpen(true)}
+              >
+                <UserPlus className="h-4 w-4" />
+                Invite member
+              </Button>
+            )}
+            {group.members.filter((m) => m.isActive).map((member) => (
               <div
                 key={member.id}
                 className="flex items-center justify-between rounded-3xl border border-slate-200 bg-white px-4 py-3"
@@ -721,12 +816,64 @@ export default function GroupDetailsPage() {
                     {member.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-semibold text-slate-900">{member.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-slate-900">{member.name}</p>
+                      {member.discountType && member.discountType !== "none" && (
+                        <span className="inline-flex items-center rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                          {member.discountType === "pwd" ? "PWD" : "Senior"}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-slate-500">{member.isAdmin ? "Admin" : "Member"}</p>
                   </div>
                 </div>
+                {group.role === "admin" && !member.isAdmin && member.id !== user?.id && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={promoteToAdminMutation.isPending}
+                    onClick={async () => {
+                      try {
+                        await promoteToAdminMutation.mutateAsync({
+                          groupId: group.id,
+                          targetUserId: Number(member.id),
+                        });
+                        addToast(`${member.name} is now an admin`, "success");
+                      } catch {
+                        addToast("Failed to promote member", "error");
+                      }
+                    }}
+                  >
+                    Set as admin
+                  </Button>
+                )}
               </div>
             ))}
+            {(() => {
+              const inactiveMembers = group.members.filter((m) => !m.isActive);
+              if (inactiveMembers.length === 0) return null;
+              return (
+                <>
+                  <p className="pt-2 text-xs font-medium uppercase tracking-wide text-slate-400">Past members</p>
+                  {inactiveMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between rounded-3xl border border-slate-100 bg-slate-50 px-4 py-3 opacity-60"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-200 text-sm font-bold text-slate-400">
+                          {member.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-500">{member.name}</p>
+                          <p className="text-sm text-slate-400">Left</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              );
+            })()}
           </div>
         )}
       </main>
@@ -739,7 +886,7 @@ export default function GroupDetailsPage() {
         }}
         onSubmit={selectedExpense ? handleEditExpense : handleAddExpense}
         initialData={selectedExpense ?? undefined}
-        members={group.members}
+        members={group.members.filter((m) => m.isActive)}
         currency={group.currency}
         groupName={group.name}
       />
@@ -749,7 +896,85 @@ export default function GroupDetailsPage() {
         onClose={() => setIsEditGroupOpen(false)}
         onSubmit={handleSaveGroup}
         initialData={group}
+        isSubmitting={isSavingGroup}
       />
+
+      <InviteModal
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+        groupId={group.id}
+        groupName={group.name}
+      />
+
+      {isLeaveConfirmOpen ? (() => {
+        const isAdmin = group.role === "admin";
+        const activeMembers = group.members.filter((m) => m.isActive);
+        const otherAdmins = activeMembers.filter((m) => m.isAdmin && m.id !== user?.id);
+        const isSoleAdmin = isAdmin && otherAdmins.length === 0;
+        const otherMembers = activeMembers.filter((m) => m.id !== user?.id);
+        const needsTransfer = isSoleAdmin && otherMembers.length > 0;
+        const isOnlyMember = isSoleAdmin && otherMembers.length === 0;
+        const canLeave = !isOnlyMember && (!needsTransfer || newAdminId !== "");
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-ink-900/65 backdrop-blur-sm" onClick={() => setIsLeaveConfirmOpen(false)} />
+            <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+              <h2 className="text-lg font-semibold text-slate-900">Leave group?</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                You will no longer have access to this group&apos;s expenses and balances. This action cannot be undone.
+              </p>
+
+              {isOnlyMember ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  You are the only member. Delete the group instead.
+                </div>
+              ) : needsTransfer ? (
+                <div className="mt-4">
+                  <label htmlFor="new-admin-select" className="block text-sm font-semibold text-slate-700">
+                    Choose the new admin
+                  </label>
+                  <p className="mt-1 text-xs text-slate-500">
+                    You are the only admin. Someone needs to manage the group after you leave.
+                  </p>
+                  <select
+                    id="new-admin-select"
+                    value={newAdminId}
+                    onChange={(e) => setNewAdminId(e.target.value)}
+                    disabled={leaveGroupMutation.isPending}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400"
+                  >
+                    <option value="">Select a member...</option>
+                    {otherMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}{m.email ? ` (${m.email})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              <div className="mt-5 flex gap-3">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => setIsLeaveConfirmOpen(false)}
+                  disabled={leaveGroupMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-red-600 text-white hover:bg-red-700"
+                  onClick={() => void handleLeaveGroup()}
+                  disabled={!canLeave || leaveGroupMutation.isPending}
+                >
+                  {leaveGroupMutation.isPending ? "Leaving..." : "Leave"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
     </div>
   );
 }
