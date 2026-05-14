@@ -96,6 +96,18 @@ export function useDeleteGroupMutation() {
   });
 }
 
+export function useLeaveGroupMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, { id: string; newAdminUserId?: number }>({
+    mutationFn: async ({ id, newAdminUserId }) => {
+      await groupsApi.leave(id, newAdminUserId ? { newAdminUserId } : undefined);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: GROUPS_KEY });
+    },
+  });
+}
+
 export function useJoinGroupMutation() {
   const queryClient = useQueryClient();
   return useMutation<void, ApiError, { id: string; userId?: number; userName?: string }>({
@@ -154,6 +166,33 @@ export function useMarkNotificationsReadMutation() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+    },
+  });
+}
+
+export function usePromoteToAdminMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, { groupId: string; targetUserId: number }>({
+    mutationFn: async ({ groupId, targetUserId }) => {
+      await groupsApi.promoteToAdmin(groupId, targetUserId);
+    },
+    onSuccess: (_result, variables) => {
+      void queryClient.invalidateQueries({ queryKey: GROUPS_KEY });
+      void queryClient.invalidateQueries({ queryKey: [...GROUPS_KEY, variables.groupId] });
+      void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+    },
+  });
+}
+
+export function useClearNotificationsMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<void, ApiError, { category?: "invitations" | "activity" }>({
+    mutationFn: async ({ category }) => {
+      await groupsApi.clearNotifications(category);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+      void queryClient.invalidateQueries({ queryKey: INCOMING_INVITATIONS_KEY });
     },
   });
 }
