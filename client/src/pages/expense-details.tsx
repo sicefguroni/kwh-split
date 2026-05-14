@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, BadgeCheck, Calendar, Edit3, FileText, Receipt, Split, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,9 @@ import { AddExpenseModal } from "@/components/expenses/add-expense-modal";
 import { useCurrentUser } from "@/features/auth/use-auth";
 import { useGroupQuery } from "@/features/groups/use-groups";
 import { useExpensesQuery, useUpdateExpenseMutation } from "@/features/expenses/use-expenses";
-import { useMarkSettlementPaidMutation } from "@/features/settlements/use-settlements";
+import { useMarkSettlementPaidMutation, useSettlementHistoryQuery } from "@/features/settlements/use-settlements";
 import { resolveViewerMemberId } from "@/lib/group-money";
+import { useToast } from "@/components/ui/toast";
 import type { GroupExpense, GroupData } from "@/hooks/use-groups";
 
 export default function ExpenseDetailsPage() {
@@ -18,7 +19,9 @@ export default function ExpenseDetailsPage() {
   const { data: apiExpenses = [] } = useExpensesQuery(groupId ?? "");
   const markPaidMutation = useMarkSettlementPaidMutation(groupId ?? "");
   const updateExpenseMutation = useUpdateExpenseMutation(groupId ?? "");
+  const { data: settlementHistory = [] } = useSettlementHistoryQuery(groupId ?? "");
   const { data: user } = useCurrentUser();
+  const { addToast } = useToast();
   const group: GroupData | undefined = useMemo(
     () =>
       apiGroup
@@ -45,13 +48,22 @@ export default function ExpenseDetailsPage() {
         paidBy: expense.paidByUserId ?? "",
         date: expense.saleDate,
         note: expense.note ?? "",
-        category: (expense as any).category ?? "General",
+        category: expense.category ?? "General",
         ...(expense.splitType && {
           splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
         }),
         splits: expense.splits.map((split) => ({
           memberId: split.userId,
           amount: split.amountOwed,
+          ...(split.percentage != null && { percentage: split.percentage }),
+          ...(split.share != null && { share: split.share }),
+          isSettled: split.isSettled,
+        })),
+        receiptItems: (expense.receiptItems ?? []).map((item) => ({
+          id: item.id,
+          itemName: item.itemName,
+          price: item.price,
+          assignedUserIds: item.assignedUserIds,
         })),
         memberDiscounts: (expense.memberDiscounts ?? []).map((discount) => ({
           memberId: discount.userId,
@@ -79,7 +91,7 @@ export default function ExpenseDetailsPage() {
   totalAmount: expense.amount,
   ...(expense.paidBy ? { paidByUserId: Number(expense.paidBy) } : {}),
   saleDate: expense.date,
-  note: expense.note ?? "",  
+  note: expense.note ?? "",
   category: expense.category ?? "General",
   taxAmount: 0,
   tipAmount: 0,
@@ -88,6 +100,13 @@ export default function ExpenseDetailsPage() {
   splits: expense.splits.map((split) => ({
     userId: Number(split.memberId),
     amount: split.amount,
+    ...(split.percentage != null && { percentage: split.percentage }),
+    ...(split.share != null && { share: split.share }),
+  })),
+  receiptItems: (expense.receiptItems ?? []).map((item) => ({
+    itemName: item.itemName,
+    price: item.price,
+    assignedUserIds: item.assignedUserIds.map(Number),
   })),
   memberDiscounts: (expense.memberDiscounts ?? []).map((entry) => ({
     userId: Number(entry.memberId),
@@ -105,6 +124,7 @@ export default function ExpenseDetailsPage() {
         memberName: member?.name ?? "Unknown",
         amount: split.amount,
         discountType: discount?.type ?? "none",
+        isSettled: split.isSettled ?? false,
       };
     });
   }, [expense, group]);
@@ -119,20 +139,8 @@ export default function ExpenseDetailsPage() {
     payerMemberId: null,
   });
 
-  const [paidAmounts, setPaidAmounts] = useState<Record<string, number>>({});
-
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<GroupExpense | null>(null);
-
-  const originalAmountsRef = useRef<Record<string, number>>({});
-  if (expense) {
-    expense.splits.forEach((split) => {
-      const key = String(split.memberId);
-      if (originalAmountsRef.current[key] === undefined && split.amount > 0) {
-        originalAmountsRef.current[key] = split.amount;
-      }
-    });
-  }
 
   const openPaymentModal = (payerMemberId: string) => {
     setPaymentModal({ isOpen: true, payerMemberId: String(payerMemberId) });
@@ -147,11 +155,18 @@ export default function ExpenseDetailsPage() {
     const splitAmount = Number(amount);
     if (splitAmount <= 0) return;
     const payerMemberId = paymentModal.payerMemberId;
-    setPaidAmounts((prev) => ({
-      ...prev,
-      [String(payerMemberId)]: (prev[String(payerMemberId)] ?? 0) + splitAmount,
-    }));
-    closePaymentModal();
+    try {
+      await markPaidMutation.mutateAsync({
+        fromUserId: Number(payerMemberId),
+        toUserId: Number(expense.paidBy),
+        amount: splitAmount,
+      });
+      addToast("Payment recorded successfully", "success");
+    } catch {
+      addToast("Failed to record payment", "error");
+    } finally {
+      closePaymentModal();
+    }
   };
 
   const handleOpenEditExpense = (expenseToEdit: GroupExpense) => {
@@ -203,21 +218,15 @@ export default function ExpenseDetailsPage() {
     year: "numeric",
   });
 
-  const totalPaid = Object.values(paidAmounts).reduce((s, v) => s + v, 0);
   const isFullySettled = expense.splits.every(
-    (split) =>
-      split.memberId === expense.paidBy ||
-      (paidAmounts[String(split.memberId)] ?? 0) >= split.amount - 0.0001,
+    (split) => split.memberId === expense.paidBy || split.isSettled,
   );
   const canMarkPaid = isExpensePayer;
 
   const modalMemberSplit = paymentModal.payerMemberId
     ? expense.splits.find((s) => s.memberId === paymentModal.payerMemberId)
     : null;
-  const modalAmountPaid = paymentModal.payerMemberId
-    ? (paidAmounts[String(paymentModal.payerMemberId)] ?? 0)
-    : 0;
-  const modalRemainingAmount = Math.max(0, (modalMemberSplit?.amount ?? 0) - modalAmountPaid);
+  const modalRemainingAmount = modalMemberSplit?.amount ?? 0;
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
@@ -254,7 +263,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
                 {expense.currency}{expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div className="text-lg text-primary-foreground/80">
-                {isFullySettled ? "Fully settled" : `${expense.currency}${(expense.amount - totalPaid).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unsettled`}
+                {isFullySettled ? "Fully settled" : `${expense.currency}${expense.splits.filter((s) => s.memberId !== expense.paidBy && !s.isSettled).reduce((sum, s) => sum + s.amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unsettled`}
               </div>
             </div>
           </section>
@@ -262,10 +271,10 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
           <button
             type="button"
             onClick={() => handleOpenEditExpense(expense)}
-            className="absolute right-4 top-4 flex items-center justify-center rounded-full p-2 bg-white/10 ring-1 ring-white/15 transition hover:bg-white/20"
+            className="absolute right-4 top-4 flex items-center justify-center rounded-full p-2.5 bg-white/15 ring-1 ring-white/20 text-white transition hover:bg-white/25"
             aria-label="Edit expense"
           >
-            <Edit3 className="h-4 w-4" />
+            <Edit3 className="h-4.5 w-4.5" />
           </button>
         </div>
 
@@ -297,13 +306,34 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
           />
         </section>
 
-        {/* Notes — only rendered when a note exists */}
         {expense.note && (
           <section className="mb-3 rounded-2xl border border-slate-200 bg-white p-4">
             <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-ink-500 font-medium mb-1.5">
               <FileText className="h-3.5 w-3.5" /> Notes
             </div>
             <p className="text-sm text-ink-900 leading-relaxed">{expense.note}</p>
+          </section>
+        )}
+
+        {/* Receipt Items */}
+        {expense.receiptItems && expense.receiptItems.length > 0 && (
+          <section className="mt-5">
+            <h3 className="mb-3 text-sm font-semibold text-ink-500 uppercase tracking-widest">
+              ITEMS
+            </h3>
+            <ul className="space-y-1.5">
+              {expense.receiptItems.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-2.5 shadow-sm"
+                >
+                  <span className="text-sm text-ink-900 truncate mr-3">{item.itemName}</span>
+                  <span className="text-sm font-semibold text-ink-900 flex-shrink-0">
+                    {expense.currency}{item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 
@@ -317,9 +347,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
 
           <ul className="space-y-2">
             {memberSplits.map((split) => {
-              const amountPaidForMember = paidAmounts[String(split.memberId)] ?? 0;
-              const remainingAmount = Math.max(0, split.amount - amountPaidForMember);
-              const isFullyPaid = remainingAmount === 0;
+              const isFullyPaid = split.isSettled;
               const isPayer = split.memberId === expense.paidBy;
 
               return (
@@ -337,7 +365,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
                     <span className="font-semibold text-ink-900 truncate">{split.memberName}</span>
                     {split.discountType !== "none" && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-700 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap">
-                        {split.discountType === "pwd" ? "PWD DISCOUNT" : "SC DISCOUNT"}
+                        {split.discountType === "pwd" ? "PWD DISCOUNT" : "SENIOR DISCOUNT"}
                       </span>
                     )}
                   </div>
@@ -346,11 +374,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <span className="text-sm font-bold text-ink-900">
                       {expense.currency}
-                      {(
-                        isFullyPaid
-                          ? (originalAmountsRef.current[String(split.memberId)] ?? split.amount)
-                          : remainingAmount
-                      ).toLocaleString(undefined, {
+                      {split.amount.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -383,6 +407,53 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
             })}
           </ul>
         </section>
+
+        {/* Payment History — settlements related to this expense */}
+        {(() => {
+          const expenseSettlements = settlementHistory.filter((entry) => {
+            const idMatch = entry.note?.match(/\[expenses:([^\]]+)\]/);
+            if (idMatch?.[1]) {
+              return idMatch[1].split(",").includes(expense.id);
+            }
+            return false;
+          });
+          if (expenseSettlements.length === 0) return null;
+          return (
+            <section className="mt-6">
+              <h3 className="mb-3 text-sm font-semibold text-ink-500 uppercase tracking-widest">
+                PAYMENT HISTORY
+              </h3>
+              <ul className="space-y-2">
+                {expenseSettlements.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900 truncate">
+                        {entry.fromUserName} &rarr; {entry.toUserName}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {new Date(entry.paidAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-emerald-700">
+                      {expense.currency}{" "}
+                      {entry.amountPaid.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })()}
       </main>
 
       {paymentModal.isOpen && paymentModal.payerMemberId && (
@@ -391,7 +462,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
           payerName={paidByMember?.name ?? "Unknown"}
           initialAmount={modalRemainingAmount.toFixed(2)}
           maxAmount={modalRemainingAmount.toFixed(2)}
-          amountPaid={modalAmountPaid.toFixed(2)}
+          amountPaid={"0.00"}
           totalShare={(modalMemberSplit?.amount ?? 0).toFixed(2)}
           currency={group.currency}
           onConfirm={handleConfirmPayment}
@@ -408,7 +479,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
           }}
           onSubmit={handleEditExpense}
           initialData={selectedExpense}
-          members={group.members}
+          members={group.members.filter((m) => m.isActive)}
           currency={group.currency}
           groupName={group.name}
         />
