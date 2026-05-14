@@ -36,7 +36,7 @@ const SyncBodySchema = z.object({
 
 async function isGroupMember(userId: number, groupId: number): Promise<boolean> {
   const { rows } = await pool.query<{ ok: number }>(
-    `SELECT 1 AS ok FROM group_members WHERE user_id = $1 AND group_id = $2 LIMIT 1`,
+    `SELECT 1 AS ok FROM group_members WHERE user_id = $1 AND group_id = $2 AND is_active = TRUE LIMIT 1`,
     [userId, groupId],
   );
   return rows.length > 0;
@@ -89,7 +89,7 @@ offlineSyncRouter.post("/", async (req: Request, res: Response, next: NextFuncti
                group_id = EXCLUDED.group_id,
                updated_at = CURRENT_TIMESTAMP
              WHERE expenses.group_id IN (
-               SELECT gm.group_id FROM group_members gm WHERE gm.user_id = $6
+               SELECT gm.group_id FROM group_members gm WHERE gm.user_id = $6 AND gm.is_active = TRUE
              )
              RETURNING expense_id`,
             [

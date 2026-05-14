@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { broadcastGroupChange, broadcastInvitationChange } from "../realtime/realtime-hub.js";
 import { userRepository } from "../auth/auth.repository.js";
 import { hashPassword } from "../../utils/password.js";
+import { displayName } from "../../utils/display-name.js";
 import { badRequest, tooManyRequests } from "../../utils/errors.js";
 import { sendGroupInvitationEmail, type GroupInviteDeliveryStatus } from "./groups.mailer.js";
 import {
@@ -82,14 +83,14 @@ export interface PublicGroup {
   imageUrl: string | null;
   memberCount: number;
   role: string;
-  members: Array<{ id: string; name: string; email: string; isAdmin: boolean }>;
+  members: Array<{ id: string; name: string; email: string; isAdmin: boolean; isActive: boolean; discountType: string }>;
   createdAt: string;
   inviteToken: string;
 }
 
 export interface PublicNotification {
   id: string;
-  type: "group_invitation_accepted" | "group_invitation_declined";
+  type: "group_invitation_accepted" | "group_invitation_declined" | "group_deleted" | "member_left" | "admin_transferred" | "member_joined" | "expense_added" | "expense_deleted" | "settlement_paid";
   title: string;
   message: string;
   isRead: boolean;
@@ -187,15 +188,18 @@ async function buildPublicGroup(groupId: number, userId: number): Promise<Public
     throw badRequest("Group not found", "group_not_found");
   }
 
-  const members = await groupsRepository.listMembers(group.group_id);
-  const publicGroup = toPublicGroup(group, members.length);
+  const allMembers = await groupsRepository.listAllMembers(group.group_id);
+  const activeCount = allMembers.filter((m) => m.is_active).length;
+  const publicGroup = toPublicGroup(group, activeCount);
   return {
     ...publicGroup,
-    members: members.map((member) => ({
+    members: allMembers.map((member) => ({
       id: String(member.user_id),
       name: member.name,
       email: member.email,
       isAdmin: member.role === "admin",
+      isActive: member.is_active,
+      discountType: member.discount_type ?? "none",
     })),
   };
 }
@@ -232,15 +236,18 @@ export const groupsService = {
     const groups = await groupsRepository.listForUser(userId);
     const groupsWithMembers = await Promise.all(
       groups.map(async (group) => {
-        const members = await groupsRepository.listMembers(group.group_id);
-        const publicGroup = toPublicGroup(group, members.length);
+        const allMembers = await groupsRepository.listAllMembers(group.group_id);
+        const activeCount = allMembers.filter((m) => m.is_active).length;
+        const publicGroup = toPublicGroup(group, activeCount);
         return {
           ...publicGroup,
-          members: members.map((member) => ({
+          members: allMembers.map((member) => ({
             id: String(member.user_id),
             name: member.name,
             email: member.email,
             isAdmin: member.role === "admin",
+            isActive: member.is_active,
+            discountType: member.discount_type ?? "none",
           })),
         };
       }),
@@ -266,7 +273,14 @@ export const groupsService = {
     if (!targetUserId && input.userName) {
       const user = await groupsRepository.findActiveUserByName(input.userName);
       if (user) {
-        targetUserId = user.user_id;
+        const alreadyMember = await groupsRepository.isUserMember(groupId, user.user_id);
+        if (alreadyMember && env.NODE_ENV !== "production") {
+          const passwordHash = await hashPassword(randomUUID());
+          const created = await groupsRepository.createActiveUserForTesting(input.userName, passwordHash);
+          targetUserId = created.user_id;
+        } else {
+          targetUserId = user.user_id;
+        }
       } else if (env.NODE_ENV !== "production") {
         const passwordHash = await hashPassword(randomUUID());
         const created = await groupsRepository.createActiveUserForTesting(input.userName, passwordHash);
@@ -306,10 +320,192 @@ export const groupsService = {
   },
 
   async remove(groupId: number, requesterId: number): Promise<void> {
+    const group = await groupsRepository.findById(groupId);
+    const members = group ? await groupsRepository.listMembers(groupId) : [];
+
     const deleted = await groupsRepository.deleteGroup({ groupId, userId: requesterId });
     if (!deleted) {
       throw badRequest("Only group admin can delete this group", "group_admin_required");
     }
+
+    const otherMembers = members.filter((m) => m.user_id !== requesterId);
+    const groupName = group?.name ?? "a group";
+    const requester = members.find((m) => m.user_id === requesterId);
+    const requesterLabel = requester ? displayName(requester, members) : "An admin";
+
+    await Promise.all(
+      otherMembers.map((member) =>
+        groupsRepository.createNotification({
+          userId: member.user_id,
+          actorUserId: requesterId,
+          type: "group_deleted",
+          title: `${groupName} was deleted`,
+          message: `${requesterLabel} deleted the group "${groupName}".`,
+        }),
+      ),
+    );
+
+    for (const member of otherMembers) {
+      broadcastInvitationChange(member.user_id);
+    }
+  },
+
+  async promoteToAdmin(groupId: number, requesterId: number, targetUserId: number): Promise<void> {
+    const membership = await groupsRepository.findForUser(groupId, requesterId);
+    if (!membership) {
+      throw badRequest("You are not a member of this group", "not_a_member");
+    }
+    if (membership.role !== "admin") {
+      throw badRequest("Only admins can promote members", "not_admin");
+    }
+    const targetIsMember = await groupsRepository.isUserMember(groupId, targetUserId);
+    if (!targetIsMember) {
+      throw badRequest("Target user is not an active member", "target_not_member");
+    }
+
+    const promoted = await groupsRepository.promoteToAdmin(groupId, targetUserId);
+    if (!promoted) {
+      throw badRequest("User is already an admin", "already_admin");
+    }
+
+    broadcastGroupChange(groupId);
+
+    void (async () => {
+      try {
+        const members = await groupsRepository.listMembers(groupId);
+        const actor = members.find((m) => m.user_id === requesterId);
+        const target = members.find((m) => m.user_id === targetUserId);
+        if (!actor || !target) return;
+        const actorLabel = displayName(actor, members);
+        const targetLabel = displayName(target, members);
+
+        await groupsRepository.createNotification({
+          userId: targetUserId,
+          actorUserId: requesterId,
+          groupId,
+          type: "admin_transferred",
+          title: "You are now an admin",
+          message: `${actorLabel} promoted you to admin in "${membership.name}".`,
+        });
+
+        const otherMembers = members.filter((m) => m.user_id !== targetUserId && m.user_id !== requesterId);
+        await Promise.all(
+          otherMembers.map((m) =>
+            groupsRepository.createNotification({
+              userId: m.user_id,
+              actorUserId: requesterId,
+              groupId,
+              type: "admin_transferred",
+              title: `${targetLabel} is now admin`,
+              message: `${actorLabel} promoted ${targetLabel} to admin in "${membership.name}".`,
+            }),
+          ),
+        );
+
+        for (const m of members) {
+          broadcastInvitationChange(m.user_id);
+        }
+      } catch {
+        // fire-and-forget
+      }
+    })();
+  },
+
+  async leaveGroup(groupId: number, requesterId: number, newAdminUserId?: number): Promise<void> {
+    const membership = await groupsRepository.findForUser(groupId, requesterId);
+    if (!membership) {
+      throw badRequest("You are not a member of this group", "not_a_member");
+    }
+
+    const members = await groupsRepository.listMembers(groupId);
+    const requester = members.find((m) => m.user_id === requesterId);
+    const requesterName = requester ? displayName(requester, members) : "Someone";
+    const groupName = membership.name;
+    let didTransfer = false;
+    let newAdminName: string | undefined;
+
+    if (membership.role === "admin") {
+      const otherAdmins = members.filter((m) => m.role === "admin" && m.user_id !== requesterId);
+      const isSoleAdmin = otherAdmins.length === 0;
+
+      if (isSoleAdmin) {
+        const otherMembers = members.filter((m) => m.user_id !== requesterId);
+        if (otherMembers.length === 0) {
+          throw badRequest(
+            "You are the only member. Delete the group instead.",
+            "sole_member_cannot_leave",
+          );
+        }
+        if (!newAdminUserId) {
+          throw badRequest(
+            "You must choose a new admin before leaving.",
+            "admin_transfer_required",
+          );
+        }
+        if (newAdminUserId === requesterId) {
+          throw badRequest("New admin must be a different member.", "invalid_transfer_target");
+        }
+        const targetIsMember = await groupsRepository.isUserMember(groupId, newAdminUserId);
+        if (!targetIsMember) {
+          throw badRequest("The chosen user is not a member of this group.", "transfer_target_not_member");
+        }
+
+        const transferred = await groupsRepository.transferAdmin(groupId, requesterId, newAdminUserId);
+        if (!transferred) {
+          throw badRequest("Failed to transfer admin role.", "admin_transfer_failed");
+        }
+        didTransfer = true;
+        newAdminName = members.find((m) => m.user_id === newAdminUserId)?.name ?? "a member";
+      }
+    }
+
+    await groupsRepository.removeMember(groupId, requesterId);
+    await groupsRepository.updateInvitationStatusByMembership(groupId, requesterId, "left");
+
+    const remainingMembers = members.filter((m) => m.user_id !== requesterId);
+
+    broadcastGroupChange(groupId);
+    for (const member of remainingMembers) {
+      broadcastInvitationChange(member.user_id);
+    }
+
+    void (async () => {
+      try {
+        await Promise.all(
+          remainingMembers.map((member) =>
+            groupsRepository.createNotification({
+              userId: member.user_id,
+              actorUserId: requesterId,
+              groupId,
+              type: "member_left",
+              title: `${requesterName} left`,
+              message: `${requesterName} left the group "${groupName}".`,
+            }),
+          ),
+        );
+
+        if (didTransfer && newAdminUserId) {
+          await Promise.all(
+            remainingMembers.map((member) =>
+              groupsRepository.createNotification({
+                userId: member.user_id,
+                actorUserId: requesterId,
+                groupId,
+                type: "admin_transferred",
+                title: member.user_id === newAdminUserId
+                  ? `You are now admin of ${groupName}`
+                  : `${newAdminName} is now admin`,
+                message: member.user_id === newAdminUserId
+                  ? `${requesterName} made you the admin of "${groupName}" before leaving.`
+                  : `${requesterName} transferred admin to ${newAdminName} in "${groupName}".`,
+              }),
+            ),
+          );
+        }
+      } catch {
+        // Notification creation is best-effort; the member was already removed.
+      }
+    })();
   },
 
   async searchCollaborators(
@@ -524,6 +720,13 @@ export const groupsService = {
     await groupsRepository.markNotificationsRead(userId);
   },
 
+  async clearNotifications(
+    userId: number,
+    category?: "invitations" | "activity",
+  ): Promise<void> {
+    await groupsRepository.clearNotifications(userId, category);
+  },
+
   async acceptIncomingInvitation(
     invitationId: number,
     userId: number,
@@ -667,10 +870,39 @@ export const groupsService = {
       throw badRequest("Invalid invite link", "invalid_invite_link");
     }
 
+    const membersBefore = await groupsRepository.listMembers(group.group_id);
     const inserted = await groupsRepository.addMember(group.group_id, userId);
     const wasNewMember = inserted !== null;
 
     broadcastGroupChange(group.group_id);
+    for (const member of membersBefore) {
+      broadcastInvitationChange(member.user_id);
+    }
+
+    if (wasNewMember) {
+      const joiner = await requireActiveUser(userId);
+      const allMembers = [...membersBefore, { name: joiner.name, email: joiner.email }];
+      const joinerLabel = displayName(joiner, allMembers);
+      void (async () => {
+        try {
+          await Promise.all(
+            membersBefore.map((member) =>
+              groupsRepository.createNotification({
+                userId: member.user_id,
+                actorUserId: userId,
+                groupId: group.group_id,
+                type: "member_joined",
+                title: `${joinerLabel} joined`,
+                message: `${joinerLabel} joined "${group.name}" via invite link.`,
+              }),
+            ),
+          );
+        } catch {
+          // Best-effort notification creation
+        }
+      })();
+    }
+
     const fullGroup = await buildPublicGroup(group.group_id, userId);
     return { group: fullGroup, wasNewMember };
   },
@@ -703,22 +935,54 @@ export const groupsService = {
       );
     }
 
+    const membersBefore = await groupsRepository.listMembers(normalized.group_id);
     const inserted = await groupsRepository.addMember(normalized.group_id, userId);
     const wasNewMember = inserted !== null;
 
     await groupsRepository.updateInvitationStatus(normalized.invitation_id, "accepted", userId);
-    await groupsRepository.createNotification({
-      userId: normalized.inviter_user_id,
-      actorUserId: userId,
-      groupId: normalized.group_id,
-      invitationId: normalized.invitation_id,
-      type: "group_invitation_accepted",
-      title: `${userName} accepted your invite`,
-      message: `${userName} joined ${normalized.group_name}.`,
-    });
-    broadcastInvitationChange(userId);
-    broadcastInvitationChange(normalized.inviter_user_id);
+
     broadcastGroupChange(normalized.group_id);
+    broadcastInvitationChange(userId);
+    for (const member of membersBefore) {
+      broadcastInvitationChange(member.user_id);
+    }
+
+    const allMembers = [...membersBefore, { name: userName, email: userEmail }];
+    const joinerLabel = displayName({ name: userName, email: userEmail }, allMembers);
+
+    void (async () => {
+      try {
+        await groupsRepository.createNotification({
+          userId: normalized.inviter_user_id,
+          actorUserId: userId,
+          groupId: normalized.group_id,
+          invitationId: normalized.invitation_id,
+          type: "group_invitation_accepted",
+          title: `${joinerLabel} accepted your invite`,
+          message: `${joinerLabel} joined ${normalized.group_name}.`,
+        });
+
+        if (wasNewMember) {
+          const otherMembers = membersBefore.filter(
+            (m) => m.user_id !== normalized.inviter_user_id,
+          );
+          await Promise.all(
+            otherMembers.map((member) =>
+              groupsRepository.createNotification({
+                userId: member.user_id,
+                actorUserId: userId,
+                groupId: normalized.group_id,
+                type: "member_joined",
+                title: `${joinerLabel} joined`,
+                message: `${joinerLabel} joined "${normalized.group_name}".`,
+              }),
+            ),
+          );
+        }
+      } catch {
+        // Best-effort notification creation
+      }
+    })();
 
     const group = await buildPublicGroup(normalized.group_id, userId);
     return { group, wasNewMember };

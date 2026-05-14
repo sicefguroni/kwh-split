@@ -16,6 +16,7 @@ export interface GroupMemberRecord {
   group_id: number;
   user_id: number;
   role: string;
+  is_active: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -23,6 +24,7 @@ export interface GroupMemberRecord {
 export interface GroupMemberWithNameRecord extends GroupMemberRecord {
   name: string;
   email: string;
+  discount_type: string;
 }
 
 export interface GroupInvitationRecord {
@@ -54,7 +56,7 @@ export interface GroupNotificationRecord {
   actor_user_id: number | null;
   group_id: number | null;
   invitation_id: number | null;
-  type: "group_invitation_accepted" | "group_invitation_declined";
+  type: "group_invitation_accepted" | "group_invitation_declined" | "group_deleted" | "member_left" | "admin_transferred" | "member_joined" | "expense_added" | "expense_deleted" | "settlement_paid";
   title: string;
   message: string;
   is_read: boolean;
@@ -97,6 +99,7 @@ const MEMBER_COLUMNS = `
   group_id,
   user_id,
   role,
+  is_active,
   created_at,
   updated_at
 `;
@@ -138,7 +141,7 @@ const INVITATION_WITH_CONTEXT_SELECT = `
   (
     SELECT COUNT(*)::int
     FROM group_members gm_count
-    WHERE gm_count.group_id = gi.group_id
+    WHERE gm_count.group_id = gi.group_id AND gm_count.is_active = TRUE
   ) AS member_count
 `;
 
@@ -206,7 +209,7 @@ export const groupsRepository = {
       `SELECT ${GROUP_COLUMNS_WITH_ALIAS}, gm.role
        FROM groups g
        INNER JOIN group_members gm ON gm.group_id = g.group_id
-       WHERE gm.user_id = $1
+       WHERE gm.user_id = $1 AND gm.is_active = TRUE
        ORDER BY g.updated_at DESC, g.group_id DESC`,
       [userId],
     );
@@ -221,7 +224,7 @@ export const groupsRepository = {
       `SELECT ${GROUP_COLUMNS_WITH_ALIAS}, gm.role
        FROM groups g
        INNER JOIN group_members gm ON gm.group_id = g.group_id
-       WHERE g.group_id = $1 AND gm.user_id = $2`,
+       WHERE g.group_id = $1 AND gm.user_id = $2 AND gm.is_active = TRUE`,
       [groupId, userId],
     );
     return rows[0] ?? null;
@@ -241,7 +244,7 @@ export const groupsRepository = {
     const { rows } = await pool.query<{ total: number }>(
       `SELECT COUNT(*)::int AS total
        FROM group_members
-       WHERE group_id = $1`,
+       WHERE group_id = $1 AND is_active = TRUE`,
       [groupId],
     );
     return rows[0]?.total ?? 0;
@@ -249,13 +252,66 @@ export const groupsRepository = {
 
   async addMember(groupId: number, userId: number, role = "member"): Promise<GroupMemberRecord | null> {
     const { rows } = await pool.query<GroupMemberRecord>(
-      `INSERT INTO group_members (group_id, user_id, role)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (group_id, user_id) DO NOTHING
+      `INSERT INTO group_members (group_id, user_id, role, is_active)
+       VALUES ($1, $2, $3, TRUE)
+       ON CONFLICT (group_id, user_id) DO UPDATE
+         SET is_active = TRUE, role = EXCLUDED.role, updated_at = CURRENT_TIMESTAMP
        RETURNING ${MEMBER_COLUMNS}`,
       [groupId, userId, role],
     );
     return rows[0] ?? null;
+  },
+
+  async transferAdmin(groupId: number, fromUserId: number, toUserId: number): Promise<boolean> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const demote = await client.query(
+        `UPDATE group_members SET role = 'member', updated_at = CURRENT_TIMESTAMP
+         WHERE group_id = $1 AND user_id = $2 AND role = 'admin'`,
+        [groupId, fromUserId],
+      );
+      if ((demote.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      const promote = await client.query(
+        `UPDATE group_members SET role = 'admin', updated_at = CURRENT_TIMESTAMP
+         WHERE group_id = $1 AND user_id = $2`,
+        [groupId, toUserId],
+      );
+      if ((promote.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+      await client.query("COMMIT");
+      return true;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+
+  async removeMember(groupId: number, userId: number): Promise<boolean> {
+    const result = await pool.query(
+      `UPDATE group_members
+       SET is_active = FALSE, role = 'member', updated_at = CURRENT_TIMESTAMP
+       WHERE group_id = $1 AND user_id = $2 AND is_active = TRUE`,
+      [groupId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  async promoteToAdmin(groupId: number, userId: number): Promise<boolean> {
+    const result = await pool.query(
+      `UPDATE group_members
+       SET role = 'admin', updated_at = CURRENT_TIMESTAMP
+       WHERE group_id = $1 AND user_id = $2 AND is_active = TRUE AND role = 'member'`,
+      [groupId, userId],
+    );
+    return (result.rowCount ?? 0) > 0;
   },
 
   async isUserMember(groupId: number, userId: number): Promise<boolean> {
@@ -263,7 +319,7 @@ export const groupsRepository = {
       `SELECT EXISTS(
          SELECT 1
          FROM group_members
-         WHERE group_id = $1 AND user_id = $2
+         WHERE group_id = $1 AND user_id = $2 AND is_active = TRUE
        ) AS exists`,
       [groupId, userId],
     );
@@ -276,7 +332,7 @@ export const groupsRepository = {
          SELECT 1
          FROM group_members gm
          INNER JOIN users u ON u.user_id = gm.user_id
-         WHERE gm.group_id = $1 AND LOWER(u.email) = LOWER($2)
+         WHERE gm.group_id = $1 AND LOWER(u.email) = LOWER($2) AND gm.is_active = TRUE
        ) AS exists`,
       [groupId, email],
     );
@@ -285,11 +341,25 @@ export const groupsRepository = {
 
   async listMembers(groupId: number): Promise<GroupMemberWithNameRecord[]> {
     const { rows } = await pool.query<GroupMemberWithNameRecord>(
-      `SELECT gm.member_id, gm.group_id, gm.user_id, gm.role, gm.created_at, gm.updated_at, u.name, u.email
+      `SELECT gm.member_id, gm.group_id, gm.user_id, gm.role, gm.is_active, gm.created_at, gm.updated_at,
+              u.name, u.email, COALESCE(u.discount_type, 'none') AS discount_type
+       FROM group_members gm
+       INNER JOIN users u ON u.user_id = gm.user_id
+       WHERE gm.group_id = $1 AND gm.is_active = TRUE
+       ORDER BY gm.member_id ASC`,
+      [groupId],
+    );
+    return rows;
+  },
+
+  async listAllMembers(groupId: number): Promise<GroupMemberWithNameRecord[]> {
+    const { rows } = await pool.query<GroupMemberWithNameRecord>(
+      `SELECT gm.member_id, gm.group_id, gm.user_id, gm.role, gm.is_active, gm.created_at, gm.updated_at,
+              u.name, u.email, COALESCE(u.discount_type, 'none') AS discount_type
        FROM group_members gm
        INNER JOIN users u ON u.user_id = gm.user_id
        WHERE gm.group_id = $1
-       ORDER BY gm.member_id ASC`,
+       ORDER BY gm.is_active DESC, gm.member_id ASC`,
       [groupId],
     );
     return rows;
@@ -346,6 +416,7 @@ export const groupsRepository = {
        INNER JOIN group_members collaborator_members
          ON collaborator_members.group_id = mine.group_id
         AND collaborator_members.user_id <> mine.user_id
+        AND collaborator_members.is_active = TRUE
        INNER JOIN users collaborator
          ON collaborator.user_id = collaborator_members.user_id
         AND collaborator.is_active = TRUE
@@ -354,7 +425,9 @@ export const groupsRepository = {
        LEFT JOIN group_members excluded_group_member
          ON excluded_group_member.group_id = $3
         AND excluded_group_member.user_id = collaborator.user_id
+        AND excluded_group_member.is_active = TRUE
        WHERE mine.user_id = $1
+         AND mine.is_active = TRUE
          AND ($3::int IS NULL OR excluded_group_member.user_id IS NULL)
          AND (
            LOWER(collaborator.name) LIKE $2
@@ -409,7 +482,8 @@ export const groupsRepository = {
        WHERE g.group_id = $5
          AND gm.group_id = g.group_id
          AND gm.user_id = $6
-         AND gm.role = 'admin'`,
+         AND gm.role = 'admin'
+         AND gm.is_active = TRUE`,
       [
         input.name,
         input.description ?? null,
@@ -538,7 +612,7 @@ export const groupsRepository = {
 
   async updateInvitationStatus(
     invitationId: number,
-    status: "pending" | "accepted" | "declined" | "expired",
+    status: "pending" | "accepted" | "declined" | "expired" | "left",
     inviteeUserId?: number,
   ): Promise<boolean> {
     const result = await pool.query(
@@ -550,6 +624,23 @@ export const groupsRepository = {
       [status, inviteeUserId ?? null, invitationId],
     );
     return (result.rowCount ?? 0) > 0;
+  },
+
+  async updateInvitationStatusByMembership(
+    groupId: number,
+    userId: number,
+    status: "left",
+  ): Promise<number> {
+    const result = await pool.query(
+      `UPDATE group_invitations
+       SET status = $1,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE group_id = $2
+         AND invitee_user_id = $3
+         AND status = 'accepted'`,
+      [status, groupId, userId],
+    );
+    return result.rowCount ?? 0;
   },
 
   async listInvitationsForGroup(groupId: number): Promise<GroupInvitationWithContextRecord[]> {
@@ -599,7 +690,7 @@ export const groupsRepository = {
     actorUserId?: number;
     groupId?: number;
     invitationId?: number;
-    type: "group_invitation_accepted" | "group_invitation_declined";
+    type: "group_invitation_accepted" | "group_invitation_declined" | "group_deleted" | "member_left" | "admin_transferred" | "member_joined" | "expense_added" | "expense_deleted" | "settlement_paid";
     title: string;
     message: string;
   }): Promise<GroupNotificationRecord> {
@@ -653,6 +744,23 @@ export const groupsRepository = {
          AND is_read = FALSE`,
       [userId],
     );
+    return result.rowCount ?? 0;
+  },
+
+  async clearNotifications(
+    userId: number,
+    category?: "invitations" | "activity",
+  ): Promise<number> {
+    const invitationTypes = "'group_invitation_accepted', 'group_invitation_declined'";
+    let query: string;
+    if (category === "invitations") {
+      query = `DELETE FROM group_notifications WHERE user_id = $1 AND type IN (${invitationTypes})`;
+    } else if (category === "activity") {
+      query = `DELETE FROM group_notifications WHERE user_id = $1 AND type NOT IN (${invitationTypes})`;
+    } else {
+      query = `DELETE FROM group_notifications WHERE user_id = $1`;
+    }
+    const result = await pool.query(query, [userId]);
     return result.rowCount ?? 0;
   },
 
