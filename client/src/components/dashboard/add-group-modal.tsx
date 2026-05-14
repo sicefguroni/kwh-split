@@ -82,7 +82,7 @@ function GroupFormModal({
     setError("");
   }, [isOpen, initialData]);
 
-  const currentMembers = useMemo(() => initialData?.members ?? [], [initialData?.members]);
+  const currentMembers = useMemo(() => (initialData?.members ?? []).filter((m) => m.isActive), [initialData?.members]);
   const previewName = name.trim() || (isEditing ? initialData?.name ?? "Group" : "New Group");
 
   const handleImageFile = async (file: File | null | undefined) => {

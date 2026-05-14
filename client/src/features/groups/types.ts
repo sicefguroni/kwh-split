@@ -3,6 +3,8 @@ export interface ApiGroupMember {
   name: string;
   email: string;
   isAdmin: boolean;
+  isActive: boolean;
+  discountType: string;
 }
 
 export interface ApiGroup {
@@ -30,7 +32,7 @@ export interface ApiGroupInvitation {
   inviteeEmail: string;
   inviteeName: string | null;
   inviteToken: string;
-  status: "pending" | "accepted" | "declined" | "expired";
+  status: "pending" | "accepted" | "declined" | "expired" | "left";
   createdAt: string;
   expiresAt: string;
 }
@@ -73,7 +75,7 @@ export interface ApiCollaboratorSuggestion {
 
 export interface ApiNotification {
   id: string;
-  type: "group_invitation_accepted" | "group_invitation_declined";
+  type: "group_invitation_accepted" | "group_invitation_declined" | "group_deleted" | "member_left" | "admin_transferred" | "member_joined" | "expense_added" | "expense_deleted" | "settlement_paid";
   title: string;
   message: string;
   isRead: boolean;
