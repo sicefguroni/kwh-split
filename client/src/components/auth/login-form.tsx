@@ -6,6 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Spinner } from "@/components/ui/spinner";
 import { useLoginMutation } from "@/features/auth/use-auth";
 import { LoginFormSchema, type LoginFormValues } from "@/features/auth/schemas";
@@ -75,8 +76,7 @@ export function LoginForm() {
       </Field>
 
       <Field label="Password" error={errors.password?.message}>
-        <Input
-          type="password"
+        <PasswordInput
           autoComplete="current-password"
           placeholder="Your password"
           icon={<Lock />}
