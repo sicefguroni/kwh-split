@@ -10,8 +10,11 @@ export interface ExpenseWritePayload {
   taxAmount?: number;
   tipAmount?: number;
   splitType: "equal" | "percentage" | "shares" | "exact" | "itemized";
+  category?: string;
+  note?: string;
   participantUserIds?: number[];
   splits?: Array<{ userId: number; percentage?: number; share?: number; amount?: number }>;
+  receiptItems?: Array<{ itemName: string; price: number; assignedUserIds: number[] }>;
   memberDiscounts?: Array<{ userId: number; type: "none" | "pwd" | "senior" }>;
 }
 
