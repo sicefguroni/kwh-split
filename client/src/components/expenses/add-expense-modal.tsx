@@ -1,5 +1,5 @@
-import { Fragment, useMemo, useState } from "react";
-import { X, ArrowLeft, Lock, Unlock } from "lucide-react";
+import { Fragment, useState } from "react";
+import { X, ArrowLeft, Lock, Unlock, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -8,7 +8,6 @@ import { type AddExpenseModalProps, type MemberSplitInput, type SplitType, type 
 import { useExpenseForm } from "./use-expense-form";
 import { ReceiptUploadZone } from "./receipt-upload-zone";
 import { receiptApi, type ReceiptItem } from "@/features/expenses/receipt-api";
-import { applyRoundingCorrection } from "./expense-utils";
 
 const CATEGORY_OPTIONS = [
   { label: "Accommodation", value: "Accommodation" },
@@ -50,58 +49,20 @@ export function AddExpenseModal({
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [receiptFile, setReceiptFile] = useState<{ file: File; preview: string } | null>(null);
-
-  const shouldSubmitItemized = useMemo(
-    () => !initialData && ocrItems.length > 0,
-    [initialData, ocrItems.length],
-  );
-
-  const buildItemizedSplits = (
-    itemAmount: number,
-    baseSplits: Array<{ memberId: string; amount: number }>,
-  ): Array<{ memberId: string; amount: number }> => {
-    const baseTotal = baseSplits.reduce((sum, split) => sum + split.amount, 0);
-    if (baseTotal <= 0) {
-      return [];
-    }
-
-    const proportional = baseSplits.map((split) => ({
-      memberId: split.memberId,
-      amount: (split.amount / baseTotal) * itemAmount,
-    }));
-
-    return applyRoundingCorrection(proportional, itemAmount).filter((split) => split.amount > 0);
-  };
+  const [manualItems, setManualItems] = useState<Array<{ name: string; price: string }>>([]);
+  const [isItemsMode, setIsItemsMode] = useState(false);
 
   const handleExpenseSubmit = async (expense: Parameters<AddExpenseModalProps["onSubmit"]>[0]) => {
-    if (!shouldSubmitItemized) {
-      await onSubmit(expense);
-      return;
+    const validItems = manualItems.filter((item) => item.name.trim() && parseFloat(item.price) > 0);
+    if (validItems.length > 0) {
+      expense.receiptItems = validItems.map((item, idx) => ({
+        id: `item-${idx}`,
+        itemName: item.name.trim(),
+        price: parseFloat(item.price),
+        assignedUserIds: [],
+      }));
     }
-
-    const baseSplits = expense.splits.filter((split) => split.amount > 0);
-    if (baseSplits.length === 0) {
-      throw new Error("Unable to create itemized expenses without member splits.");
-    }
-
-    for (const [index, item] of ocrItems.entries()) {
-      if (item.price <= 0) continue;
-      const itemName = (item.itemName ?? "").trim() || `Receipt item ${index + 1}`;
-      const itemSplits = buildItemizedSplits(item.price, baseSplits);
-      if (itemSplits.length === 0) {
-        throw new Error("Unable to calculate item splits from receipt data.");
-      }
-
-      await onSubmit({
-        ...expense,
-        id: `${expense.id}-item-${index + 1}`,
-        name: itemName,
-        amount: item.price,
-        splits: itemSplits,
-      });
-    }
-
-    handleClearReceipt();
+    await onSubmit(expense);
   };
 
   const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit: handleExpenseSubmit });
@@ -143,8 +104,9 @@ export function AddExpenseModal({
       
       setReceiptFile({ file, preview });
       setOcrItems(items);
+      setIsItemsMode(true);
+      setManualItems(items.map((item) => ({ name: item.itemName, price: item.price.toFixed(2) })));
 
-      // Auto-populate total amount from OCR items
       if (items.length > 0) {
         const total = items.reduce((sum, item) => sum + item.price, 0);
         setAmount(total.toFixed(2));
@@ -161,6 +123,41 @@ export function AddExpenseModal({
     setReceiptFile(null);
     setOcrItems([]);
     setOcrError(null);
+  };
+
+  const addManualItem = () => {
+    setManualItems((prev) => [...prev, { name: "", price: "" }]);
+  };
+
+  const updateManualItem = (index: number, field: "name" | "price", value: string) => {
+    setManualItems((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index]!, [field]: value };
+      const total = next.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0);
+      setAmount(total > 0 ? total.toFixed(2) : "");
+      return next;
+    });
+  };
+
+  const removeManualItem = (index: number) => {
+    setManualItems((prev) => {
+      const next = prev.filter((_, i) => i !== index);
+      const total = next.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0);
+      setAmount(total > 0 ? total.toFixed(2) : "");
+      return next;
+    });
+  };
+
+  const toggleItemsMode = () => {
+    if (isItemsMode) {
+      setIsItemsMode(false);
+      setManualItems([]);
+    } else {
+      setIsItemsMode(true);
+      if (manualItems.length === 0) {
+        setManualItems([{ name: "", price: "" }]);
+      }
+    }
   };
 
   if (!isOpen) return null;
@@ -240,7 +237,15 @@ export function AddExpenseModal({
         </div>
 
         {/* Scrollable body */}
-        <div className="flex flex-1 flex-col overflow-y-auto px-6 pb-6">
+        <div className="relative flex flex-1 flex-col overflow-y-auto px-6 pb-6">
+          {/* OCR processing overlay */}
+          {ocrLoading && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-white/80 backdrop-blur-[2px]">
+              <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-slate-200 border-t-slate-800" />
+              <p className="text-sm font-semibold text-slate-800">Scanning receipt...</p>
+              <p className="text-xs text-slate-500">This may take a few seconds</p>
+            </div>
+          )}
           {error && (
             <div className="mb-4 rounded-2xl border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
               {error}
@@ -291,32 +296,82 @@ export function AddExpenseModal({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Total amount
-                  </label>
-                  <Input
-                    type="number"
-                    placeholder="0.00"
-                    aria-label="Total amount"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="border-slate-200 bg-slate-50 font-bold"
-                  />
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-semibold text-slate-700">
+                  {isItemsMode ? "Items" : "Total amount"}
+                </label>
+                <button
+                  type="button"
+                  onClick={toggleItemsMode}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  {isItemsMode ? "Use single amount" : "Add items"}
+                </button>
+              </div>
+
+              {isItemsMode ? (
+                <div className="space-y-2">
+                  {manualItems.map((item, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        placeholder="Item name"
+                        value={item.name}
+                        onChange={(e) => updateManualItem(index, "name", e.target.value)}
+                        className="flex-1 h-10 border-slate-200 bg-slate-50 text-sm"
+                      />
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        value={item.price}
+                        onChange={(e) => updateManualItem(index, "price", e.target.value)}
+                        className="w-24 h-10 border-slate-200 bg-slate-50 text-sm font-bold"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeManualItem(index)}
+                        className="p-1.5 text-slate-400 hover:text-red-500"
+                        aria-label="Remove item"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addManualItem}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add item
+                  </button>
+                  <div className="flex items-center justify-between rounded-xl bg-slate-100 px-3 py-2">
+                    <span className="text-xs font-medium text-slate-500">Total</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {currency} {amount || "0.00"}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
-                    Date
-                  </label>
-                  <Input
-                    type="date"
-                    aria-label="Expense date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="border-slate-200 bg-slate-50"
-                  />
-                </div>
+              ) : (
+                <Input
+                  type="number"
+                  placeholder="0.00"
+                  aria-label="Total amount"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="border-slate-200 bg-slate-50 font-bold"
+                />
+              )}
+
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  Date
+                </label>
+                <Input
+                  type="date"
+                  aria-label="Expense date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="border-slate-200 bg-slate-50"
+                />
               </div>
 
               <div>
@@ -365,9 +420,10 @@ export function AddExpenseModal({
               <Button
                 type="submit"
                 size="lg"
+                disabled={ocrLoading}
                 className="mt-auto w-full shrink-0 bg-ink-900 text-white hover:bg-ink-800 sm:mt-6"
               >
-                Next
+                {ocrLoading ? "Scanning receipt..." : "Next"}
               </Button>
             </form>
           )}
@@ -552,10 +608,6 @@ export function AddExpenseModal({
                 </div>
               </div>
 
-              {note.trim() && (
-                <p className="px-1 text-xs italic text-slate-500">{note.trim()}</p>
-              )}
-
               <div>
                 <p className="mb-3 text-sm font-semibold text-slate-700">Split details</p>
                 <div className="space-y-2">
@@ -590,7 +642,7 @@ export function AddExpenseModal({
                   Back
                 </Button>
                 <Button type="submit" size="lg" className="flex-1 bg-ink-900 text-white hover:bg-ink-800 sm:mt-0">
-                  {isEditing ? "Save Changes" : shouldSubmitItemized ? `Add ${ocrItems.length} Item Expenses` : "Add Expense"}
+                  {isEditing ? "Save Changes" : "Add Expense"}
                 </Button>
               </div>
             </form>
