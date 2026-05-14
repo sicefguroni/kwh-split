@@ -23,7 +23,7 @@ export const parsePositiveInt = (
 
 export const assertGroupMember = async (userId: number, groupId: number): Promise<void> => {
   const { rows } = await pool.query<{ ok: number }>(
-    `SELECT 1 AS ok FROM group_members WHERE user_id = $1 AND group_id = $2 LIMIT 1`,
+    `SELECT 1 AS ok FROM group_members WHERE user_id = $1 AND group_id = $2 AND is_active = TRUE LIMIT 1`,
     [userId, groupId],
   );
   if (rows.length === 0) {

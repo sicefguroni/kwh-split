@@ -65,7 +65,7 @@ async function listGroupIdsForUser(userId: number): Promise<Set<number>> {
   const { rows } = await pool.query<{ group_id: number }>(
     `SELECT group_id
      FROM group_members
-     WHERE user_id = $1`,
+     WHERE user_id = $1 AND is_active = TRUE`,
     [userId],
   );
   return new Set(rows.map((row) => row.group_id));

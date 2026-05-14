@@ -19,6 +19,7 @@ authRouter.get("/collaborators/search", groupsController.searchCollaborators);
 authRouter.get("/invitations/incoming", groupsController.listIncomingInvitations);
 authRouter.get("/notifications", groupsController.listNotifications);
 authRouter.post("/notifications/read", groupsController.markNotificationsRead);
+authRouter.delete("/notifications", groupsController.clearNotifications);
 authRouter.post("/invitations/:invitationId/accept", groupsController.acceptIncomingInvitation);
 authRouter.post("/invitations/:invitationId/decline", groupsController.declineIncomingInvitation);
 authRouter.post("/", validateBody(CreateGroupSchema), groupsController.create);
@@ -27,7 +28,8 @@ authRouter.get("/:id", groupsController.getById);
 authRouter.post("/:id/join", validateBody(JoinGroupSchema), groupsController.join);
 authRouter.put("/:id", validateBody(UpdateGroupSchema), groupsController.update);
 authRouter.delete("/:id", groupsController.remove);
-
+authRouter.post("/:id/leave", groupsController.leave);
+authRouter.post("/:id/promote", groupsController.promoteToAdmin);
 // Invitation routes (authenticated)
 authRouter.post("/:id/invite", validateBody(CreateInvitationsSchema), groupsController.createInvitations);
 authRouter.get("/:id/invitations", groupsController.listInvitations);
