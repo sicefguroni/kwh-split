@@ -4,6 +4,7 @@ export interface AuthUser {
   name: string;
   profileImageUrl?: string | null;
   bankQrUrl?: string | null;
+  discountType: string;
   createdAt: string;
 }
 

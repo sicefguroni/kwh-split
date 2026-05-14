@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { BankAccountsSection } from "@/components/bank-accounts/bank-accounts-section";
 import { useCurrentUser, useLogoutMutation, useUpdateProfileMutation } from "@/features/auth/use-auth";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
 
@@ -260,6 +261,35 @@ export default function ProfilePage() {
               <span className="text-xs">PNG, JPG, or WebP — up to 5MB</span>
             </button>
           )}
+        </Card>
+
+        {/* Bank Accounts */}
+        <Card className="p-6 sm:p-8">
+          <BankAccountsSection />
+        </Card>
+
+        {/* PWD / Senior Discount Status */}
+        <Card className="p-6 sm:p-8">
+          <h2 className="text-lg font-bold text-ink-900 mb-1">Discount Status</h2>
+          <p className="text-sm text-ink-600 mb-4">
+            Set your PWD or Senior Citizen discount status. This will be visible to all your groups.
+          </p>
+          <select
+            value={user?.discountType ?? "none"}
+            onChange={async (e) => {
+              try {
+                await updateProfile({ discountType: e.target.value });
+              } catch {
+                // silent
+              }
+            }}
+            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+            aria-label="Discount status"
+          >
+            <option value="none">None</option>
+            <option value="pwd">PWD</option>
+            <option value="senior">Senior Citizen</option>
+          </select>
         </Card>
 
         {/* Sign Out */}
