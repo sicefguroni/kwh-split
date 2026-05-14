@@ -6,6 +6,7 @@ export interface UpdateProfileInput {
   name?: string;
   profileImageUrl?: string | null;
   bankQrUrl?: string | null;
+  discountType?: string;
 }
 
 export const authApi = {

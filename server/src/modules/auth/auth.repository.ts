@@ -10,6 +10,7 @@ export interface UserRecord {
   email_verified: boolean | null;
   profile_image_url: string | null;
   bank_qr_url: string | null;
+  discount_type: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -36,6 +37,7 @@ const USER_COLUMNS = `
   email_verified,
   profile_image_url,
   bank_qr_url,
+  discount_type,
   created_at,
   updated_at
 `;
@@ -124,6 +126,7 @@ export const userRepository = {
     name?: string | undefined;
     profileImageUrl?: string | null | undefined;
     bankQrUrl?: string | null | undefined;
+    discountType?: string | undefined;
   }): Promise<UserRecord> {
     const updates: string[] = [];
     const values: unknown[] = [userId];
@@ -142,6 +145,11 @@ export const userRepository = {
     if (input.bankQrUrl !== undefined) {
       updates.push(`bank_qr_url = $${paramCount}`);
       values.push(input.bankQrUrl);
+      paramCount++;
+    }
+    if (input.discountType !== undefined) {
+      updates.push(`discount_type = $${paramCount}`);
+      values.push(input.discountType);
       paramCount++;
     }
 
