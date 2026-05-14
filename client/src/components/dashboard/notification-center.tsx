@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   useAcceptIncomingInvitationMutation,
+  useClearNotificationsMutation,
   useDeclineIncomingInvitationMutation,
   useIncomingInvitationsQuery,
   useMarkNotificationsReadMutation,
@@ -17,14 +18,16 @@ function formatRelativeDate(value: string): string {
   return new Date(value).toLocaleString();
 }
 
-export function NotificationCenter() {
+export function NotificationCenter({ variant = "light" }: { variant?: "light" | "dark" }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { addToast } = useToast();
   const { data: invitations = [] } = useIncomingInvitationsQuery();
   const { data: notifications = [] } = useNotificationsQuery();
   const acceptMutation = useAcceptIncomingInvitationMutation();
   const declineMutation = useDeclineIncomingInvitationMutation();
   const markReadMutation = useMarkNotificationsReadMutation();
+  const clearMutation = useClearNotificationsMutation();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
@@ -63,6 +66,10 @@ export function NotificationCenter() {
   }, [isOpen, markReadMutation, unreadNotifications.length]);
 
   useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (!isOpen) {
       return;
     }
@@ -85,6 +92,34 @@ export function NotificationCenter() {
       top: rect.bottom + 8,
       right: window.innerWidth - rect.right,
     });
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (wrapperRef.current?.contains(target)) return;
+
+      const portal = document.querySelector("[data-notification-panel]");
+      if (portal?.contains(target)) return;
+
+      setIsOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+
+    window.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("touchstart", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("touchstart", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
   }, [isOpen]);
 
   const handleAccept = async (invitationId: string) => {
@@ -120,13 +155,15 @@ export function NotificationCenter() {
 
   return (
     <div className="relative" ref={wrapperRef}>
-      <Button
+      <button
         type="button"
-        variant="ghost"
-        size="sm"
         aria-label="Notifications"
         onClick={() => setIsOpen((current) => !current)}
-        className="relative cursor-pointer"
+        className={
+          variant === "dark"
+            ? "relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/20"
+            : "relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-ink-900 transition hover:bg-white/60"
+        }
       >
         <Bell className="h-4 w-4" />
         {badgeCount > 0 ? (
@@ -134,10 +171,11 @@ export function NotificationCenter() {
             {badgeCount}
           </span>
         ) : null}
-      </Button>
+      </button>
 
       {isOpen ? createPortal(
         <div
+          data-notification-panel
           className="fixed inset-0 z-[9999] bg-white sm:inset-auto sm:w-[min(26rem,calc(100vw-2rem))] sm:overflow-hidden sm:rounded-3xl sm:border sm:border-slate-200 sm:shadow-xl"
           style={panelStyle}
         >
@@ -176,9 +214,27 @@ export function NotificationCenter() {
                         All invitation activity and status updates.
                       </p>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                      {visibleInvitations.length}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {visibleInvitations.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setDeletedInvitationIds((prev) => [
+                              ...prev,
+                              ...visibleInvitations.map((inv) => inv.id),
+                            ]);
+                            addToast("Invitations cleared", "success");
+                          }}
+                        >
+                          Clear all
+                        </Button>
+                      )}
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                        {visibleInvitations.length}
+                      </span>
+                    </div>
                   </div>
 
                   {visibleInvitations.length === 0 ? (
@@ -262,12 +318,28 @@ export function NotificationCenter() {
                         Activity
                       </h4>
                       <p className="mt-1 text-xs text-slate-400">
-                        Realtime updates when someone accepts or declines invites.
+                        Realtime updates on group activity — members, expenses, and settlements.
                       </p>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
-                      {visibleNotifications.length}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {visibleNotifications.length > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={clearMutation.isPending}
+                          onClick={() => {
+                            clearMutation.mutate({ category: "activity" });
+                            setDeletedNotificationIds([]);
+                          }}
+                        >
+                          Clear all
+                        </Button>
+                      )}
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                        {visibleNotifications.length}
+                      </span>
+                    </div>
                   </div>
 
                   {visibleNotifications.length === 0 ? (

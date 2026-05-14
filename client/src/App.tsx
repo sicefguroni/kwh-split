@@ -31,8 +31,10 @@ export function App() {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/signup" element={<SignupPage />} />
-                <Route path="/oauth/callback" element={<OauthCallbackPage />} />
               </Route>
+
+              {/* OAuth callback must be outside PublicOnlyRoute — user is already authenticated when redirected here */}
+              <Route path="/oauth/callback" element={<OauthCallbackPage />} />
 
             <Route element={<ProtectedRoute />}>
               <Route path="/dashboard" element={<DashboardPage />} />

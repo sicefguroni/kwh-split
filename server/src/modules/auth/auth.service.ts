@@ -17,6 +17,7 @@ export interface PublicUser {
   name: string;
   profileImageUrl?: string | null;
   bankQrUrl?: string | null;
+  discountType: string;
   createdAt: string;
 }
 
@@ -47,6 +48,7 @@ const toPublicUser = (record: UserRecord): PublicUser => ({
   name: record.name,
   profileImageUrl: record.profile_image_url,
   bankQrUrl: record.bank_qr_url,
+  discountType: record.discount_type ?? "none",
   createdAt: record.created_at.toISOString(),
 });
 
@@ -327,7 +329,11 @@ export const authService = {
     name?: string | undefined;
     profileImageUrl?: string | null | undefined;
     bankQrUrl?: string | null | undefined;
+    discountType?: string | undefined;
   }): Promise<PublicUser> {
+    if (input.discountType !== undefined && !["none", "pwd", "senior"].includes(input.discountType)) {
+      throw badRequest("Invalid discount type", "invalid_discount_type");
+    }
     const user = await userRepository.updateProfile(parseUserId(userId), input);
     return toPublicUser(user);
   },

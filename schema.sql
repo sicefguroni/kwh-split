@@ -30,6 +30,7 @@ CREATE TABLE group_members (
     group_id INT NOT NULL,
     user_id INT NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'member',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_group_members_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
@@ -52,7 +53,7 @@ CREATE TABLE group_invitations (
     CONSTRAINT fk_group_invitations_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
     CONSTRAINT fk_group_invitations_inviter FOREIGN KEY (inviter_user_id) REFERENCES users(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_group_invitations_invitee FOREIGN KEY (invitee_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
-    CONSTRAINT chk_invitation_status CHECK (status IN ('pending', 'accepted', 'declined', 'expired'))
+    CONSTRAINT chk_invitation_status CHECK (status IN ('pending', 'accepted', 'declined', 'expired', 'left'))
 );
 
 CREATE TABLE group_notifications (
@@ -71,7 +72,7 @@ CREATE TABLE group_notifications (
     CONSTRAINT fk_group_notifications_actor FOREIGN KEY (actor_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     CONSTRAINT fk_group_notifications_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE,
     CONSTRAINT fk_group_notifications_invitation FOREIGN KEY (invitation_id) REFERENCES group_invitations(invitation_id) ON DELETE SET NULL,
-    CONSTRAINT chk_group_notification_type CHECK (type IN ('group_invitation_accepted', 'group_invitation_declined'))
+    CONSTRAINT chk_group_notification_type CHECK (type IN ('group_invitation_accepted', 'group_invitation_declined', 'group_deleted', 'member_left', 'admin_transferred', 'member_joined', 'expense_added', 'expense_deleted', 'settlement_paid'))
 );
 
 -- Create EXPENSERS (Expenses) table

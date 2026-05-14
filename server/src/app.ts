@@ -12,6 +12,7 @@ import {
 import { groupsRouter } from "./modules/groups/groups.routes.js";
 import { expensesRouter } from "./modules/expenses/expenses.routes.js";
 import { settlementsRouter } from "./modules/settlements/settlements.routes.js";
+import { bankAccountsRouter } from "./modules/bank-accounts/bank-accounts.routes.js";
 import { requireAuth } from "./middleware/require-auth.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 
@@ -51,6 +52,7 @@ export function createApp(): Express {
   app.use("/api/groups", groupsRouter);
   app.use("/api/expenses", expensesRouter);
   app.use("/api/settlements", settlementsRouter);
+  app.use("/api/bank-accounts", bankAccountsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -3,11 +3,12 @@ import { cn } from "@/lib/cn";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   icon?: ReactNode;
+  suffix?: ReactNode;
   invalid?: boolean;
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, icon, invalid, ...props }, ref) => (
+  ({ className, icon, suffix, invalid, ...props }, ref) => (
     <div
       className={cn(
         "flex h-12 items-center gap-2 rounded-xl border bg-white px-3 transition-colors",
@@ -27,6 +28,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         aria-invalid={invalid ? true : undefined}
         {...props}
       />
+      {suffix ? (
+        <span className="text-ink-400 [&>svg]:h-4 [&>svg]:w-4 flex-shrink-0">
+          {suffix}
+        </span>
+      ) : null}
     </div>
   ),
 );

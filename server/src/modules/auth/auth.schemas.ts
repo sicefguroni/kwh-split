@@ -29,6 +29,7 @@ export const UpdateProfileSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80).optional(),
   profileImageUrl: z.string().url().nullable().optional(),
   bankQrUrl: z.string().url().nullable().optional(),
+  discountType: z.enum(["none", "pwd", "senior"]).optional(),
 });
 
 export type SignupInput = z.infer<typeof SignupSchema>;

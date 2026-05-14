@@ -155,6 +155,11 @@ const calculateItemizedSplits = (totalCents: number, input: ExpenseWriteInput): 
   if (!input.receiptItems?.length) {
     throw badRequest("receiptItems are required for itemized split", "missing_receipt_items");
   }
+  for (const item of input.receiptItems) {
+    if (!item.assignedUserIds.length) {
+      throw badRequest("Each item must have at least one assigned user for itemized split", "missing_item_assignments");
+    }
+  }
   const subtotalByUser = new Map<number, number>();
   let subtotalCents = 0;
   for (const item of input.receiptItems) {
@@ -338,6 +343,15 @@ export const calculateExpenseDetails = (
     result = { splits: calculateExactSplits(totalCents, input), receiptItems: [], memberDiscounts: [] };
   } else {
     result = calculateItemizedSplits(totalCents, input);
+  }
+
+  // Preserve receipt items from input for non-itemized splits (e.g. OCR-extracted items with equal split)
+  if (input.splitType !== "itemized" && input.receiptItems?.length) {
+    result.receiptItems = input.receiptItems.map((item) => ({
+      itemName: item.itemName,
+      price: item.price,
+      assignedUserIds: item.assignedUserIds ?? [],
+    }));
   }
 
   for (const split of result.splits) {
