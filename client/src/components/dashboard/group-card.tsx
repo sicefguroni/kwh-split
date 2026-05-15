@@ -37,7 +37,7 @@ export function GroupCard({
   const isPositive = balance >= 0;
   const balanceText = isPositive ? "group owes you" : "you owe";
   const absBalance = Math.abs(balance);
-  const formattedBalance = `${currency} ${absBalance.toLocaleString(undefined, {
+  const formattedBalance = `${currency}${absBalance.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -153,7 +153,7 @@ export function GroupCard({
         <GroupAvatar
           name={name}
           imageUrl={imageUrl}
-          className="h-12 w-12 shrink-0 rounded-[18px] bg-slate-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-[22px] lg:h-14 lg:w-14"
+          className="h-12 w-12 shrink-0 rounded-[18px] bg-slate-100 sm:h-[4.5rem] sm:w-[4.5rem] sm:rounded-[22px] lg:h-19 lg:w-19"
           imageClassName="transition-transform duration-300 group-hover:scale-105"
           fallbackClassName="text-sm sm:text-lg"
         />
@@ -176,7 +176,7 @@ export function GroupCard({
                 aria-haspopup="menu"
                 aria-expanded={isMenuOpen}
                 onClick={handleMoreClick}
-                className="shrink-0 rounded-full border border-sky-100 bg-white/80 p-1.5 text-slate-700 shadow-sm backdrop-blur-sm transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/70"
+                className="shrink-0 rounded-full p-1.5 text-slate-700  transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/70"
               >
                 <MoreVertical className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>

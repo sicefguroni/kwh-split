@@ -31,6 +31,13 @@ psql -U postgres -h localhost -d kwh_split -f schema.sql
 
 If you prefer, open `psql` and run `\i schema.sql` inside the `kwh_split` database.
 
+Then apply the repository migrations. The base schema alone is not enough for the
+current server code.
+
+```powershell
+pnpm db:migrate
+```
+
 See [DATABASE_SETUP.md](DATABASE_SETUP.md) for more details.
 
 ## 3) Environment variables
@@ -59,18 +66,15 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"
 
 Write that into `server/.env` or set `JWT_SECRET` in the shell before starting the server.
 
-## 4) Run DB migrations (optional)
+## 4) Run DB migrations
 
-The repo provides a migration runner. From the repo root you can run:
+If you skipped the command above, run it before starting the server:
 
 ```powershell
-# ensure env vars are visible to the command
-$env:DATABASE_URL='postgres://postgres:your_db_password@localhost:5432/kwh_split'
-$env:JWT_SECRET='<your-secret>'
-pnpm --filter @split/api run db:migrate
+pnpm db:migrate
 ```
 
-Or run the same from the package folder if needed.
+Or run `pnpm --filter @split/server run db:migrate` from the repo root if you need the package-scoped command.
 
 ## 5) Start services
 

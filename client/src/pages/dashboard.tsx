@@ -7,6 +7,7 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { EmptyGroupsState } from "@/components/dashboard/empty-groups-state";
 import { GroupCard } from "@/components/dashboard/group-card";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import { useCurrentUser, useLogoutMutation } from "@/features/auth/use-auth";
 import { expensesApi } from "@/features/expenses/api";
 import type { ApiExpense } from "@/features/expenses/types";
@@ -60,14 +61,10 @@ export default function DashboardPage() {
   const deleteGroupMutation = useDeleteGroupMutation();
   const { data: apiGroups = [] } = useGroupsQuery();
   const isOnline = useOnlineStatus();
+  const { addToast } = useToast();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSavingGroup, setIsSavingGroup] = useState(false);
   const [editingGroup, setEditingGroup] = useState<GroupData | null>(null);
-  const [actionMessage, setActionMessage] = useState<{
-    kind: "success" | "error";
-    text: string;
-  } | null>(null);
-  const [deletedGroupNotification, setDeletedGroupNotification] = useState<string | null>(null);
 
   const groups: GroupData[] = useMemo(
     () =>
@@ -168,10 +165,7 @@ export default function DashboardPage() {
           await queryClient.invalidateQueries({ queryKey: ["incoming-invitations"] });
         }
 
-        setActionMessage({
-          kind: "success",
-          text: describeInviteOutcome("Group updated.", inviteResult),
-        });
+        addToast(describeInviteOutcome("Group updated.", inviteResult), "success");
       } else {
         const createdGroup = await createGroupMutation.mutateAsync({
           name: group.name,
@@ -196,10 +190,7 @@ export default function DashboardPage() {
           await queryClient.invalidateQueries({ queryKey: ["incoming-invitations"] });
         }
 
-        setActionMessage({
-          kind: "success",
-          text: describeInviteOutcome("Group created.", inviteResult),
-        });
+        addToast(describeInviteOutcome("Group created.", inviteResult), "success");
       }
 
       setEditingGroup(null);
@@ -232,18 +223,15 @@ export default function DashboardPage() {
 
     try {
       await deleteGroupMutation.mutateAsync({ id: group.id });
-      setDeletedGroupNotification(`Group "${group.name}" deleted.`);
+      addToast(`Group "${group.name}" deleted.`, "success");
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
-        setActionMessage({ kind: "error", text: "Session expired. Please log in again." });
+        addToast("Session expired. Please log in again.", "error");
         navigate("/login", { replace: true });
         return;
       }
 
-      setActionMessage({
-        kind: "error",
-        text: error instanceof ApiError ? error.message : "Unable to delete group.",
-      });
+      addToast(error instanceof ApiError ? error.message : "Unable to delete group.", "error");
     }
   };
 
@@ -253,28 +241,24 @@ export default function DashboardPage() {
         onLogout={handleLogout}
         isLoggingOut={logout.isPending}
         isOnline={isOnline}
-        actionMessage={actionMessage}
-        onDismissAction={() => setActionMessage(null)}
-        deletedGroupNotification={deletedGroupNotification}
-        onDismissDeletedNotification={() => setDeletedGroupNotification(null)}
         showHome={false}
       />
 
       <div className="relative overflow-hidden pt-4 text-white lg:pt-8">
         <div className="pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative mx-auto w-full max-w-3xl space-y-10">
-          <div className="flex flex-col gap-6">
-            <h1 className="mt-3 mx-4 text-xl font-semibold tracking-tight text-ink-900 lg:text-3xl">
+          <div className="flex flex-col gap-5">
+            <h1 className="mx-4 text-xl font-semibold tracking-tight text-ink-900 lg:text-3xl">
               Hello, {getFirstName(user?.name)}
             </h1>
 
-            <div className="mx-4 flex w-full max-w-sm flex-col gap-3">
+            <div className="mx-4 flex w-auto max-w-sm flex-col gap-3">
               <div className="w-full rounded-3xl border border-gray-200 px-5 py-4 text-left sm:text-left">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-ink-900">
                   Your net across groups
                 </p>
-                <p className="mt-2 text-3xl font-semibold tabular-nums text-ink-900">
-                  ₱ {formatMoney(totalBalance)}
+                <p className="mt-2 text-[1.5rem] font-semibold tabular-nums text-ink-900">
+                  ₱{formatMoney(totalBalance)}
                 </p>
               </div>
             </div>
@@ -282,7 +266,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-6 sm:px-6 sm:py-10">
+      <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-3 sm:px-6 sm:py-6">
         <section className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base text-ink-900 lg:text-lg">Your groups</h2>

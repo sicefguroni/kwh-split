@@ -4,6 +4,7 @@ import { Copy, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { useToast } from "@/components/ui/toast";
 import { groupsApi } from "@/features/groups/api";
 import { InviteRecipientPicker, type InviteRecipientDraft } from "@/components/dashboard/invite-recipient-picker";
 import { ApiError } from "@/lib/api-client";
@@ -18,11 +19,8 @@ interface InviteModalProps {
 export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModalProps) {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [recipients, setRecipients] = useState<InviteRecipientDraft[]>([]);
-  const [feedback, setFeedback] = useState<{
-    kind: "success" | "error";
-    text: string;
-  } | null>(null);
   const queryClient = useQueryClient();
+  const { addToast } = useToast();
 
   const { data: inviteLinkData, isLoading: linkLoading } = useQuery({
     queryKey: ["group-invite-link", groupId],
@@ -62,31 +60,19 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
             ? ` SMTP is not configured, so ${skippedDelivery} email${skippedDelivery === 1 ? "" : "s"} were created without sending mail.`
             : "";
       if (createdCount > 0 && skippedCount === 0) {
-        setFeedback({
-          kind: "success",
-          text: `${createdCount === 1 ? "Invitation sent." : `${createdCount} invitations sent.`}${emailSummary}`,
-        });
+        addToast(`${createdCount === 1 ? "Invitation sent." : `${createdCount} invitations sent.`}${emailSummary}`, "success");
         return;
       }
 
       if (createdCount > 0) {
-        setFeedback({
-          kind: "success",
-          text: `${createdCount} invite${createdCount === 1 ? "" : "s"} sent. ${skippedCount} skipped.${emailSummary}`,
-        });
+        addToast(`${createdCount} invite${createdCount === 1 ? "" : "s"} sent. ${skippedCount} skipped.${emailSummary}`, "success");
         return;
       }
 
-      setFeedback({
-        kind: "error",
-        text: result.skipped[0]?.reason ?? "No invitations were created.",
-      });
+      addToast(result.skipped[0]?.reason ?? "No invitations were created.", "error");
     },
     onError: (cause) => {
-      setFeedback({
-        kind: "error",
-        text: cause instanceof ApiError ? cause.message : "Failed to send invitations.",
-      });
+      addToast(cause instanceof ApiError ? cause.message : "Failed to send invitations.", "error");
     },
   });
 
@@ -97,21 +83,17 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
       await queryClient.invalidateQueries({ queryKey: ["group-invite-link", groupId] });
     },
     onError: (cause) => {
-      setFeedback({
-        kind: "error",
-        text: cause instanceof ApiError ? cause.message : "Failed to regenerate the invite link.",
-      });
+      addToast(cause instanceof ApiError ? cause.message : "Failed to regenerate the invite link.", "error");
     },
   });
 
   const handleInviteSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (recipients.length === 0) {
-      setFeedback({ kind: "error", text: "Add at least one recipient." });
+      addToast("Add at least one recipient.", "error");
       return;
     }
 
-    setFeedback(null);
     await inviteMutation.mutateAsync();
   };
 
@@ -131,7 +113,7 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
     }
 
     await navigator.clipboard.writeText(currentInviteLink);
-    setFeedback({ kind: "success", text: "Invite link copied." });
+    addToast("Invite link copied.", "success");
   };
 
   if (!isOpen) return null;
@@ -154,18 +136,6 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
         </CardHeader>
 
         <CardContent className="space-y-6 overflow-y-auto pb-6">
-          {feedback ? (
-            <div
-              className={
-                feedback.kind === "success"
-                  ? "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-                  : "rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-              }
-            >
-              {feedback.text}
-            </div>
-          ) : null}
-
           <form onSubmit={(event) => void handleInviteSubmit(event)} className="space-y-4">
             <InviteRecipientPicker
               recipients={recipients}
@@ -212,7 +182,6 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    setFeedback(null);
                     void regenerateMutation.mutateAsync();
                   }}
                   disabled={regenerateMutation.isPending}
@@ -226,7 +195,6 @@ export function InviteModal({ isOpen, onClose, groupId, groupName }: InviteModal
                 variant="secondary"
                 size="sm"
                 onClick={() => {
-                  setFeedback(null);
                   void regenerateMutation.mutateAsync();
                 }}
                 disabled={regenerateMutation.isPending}

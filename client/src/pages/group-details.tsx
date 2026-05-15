@@ -380,7 +380,6 @@ export default function GroupDetailsPage() {
           name={group.name}
           imageUrl={group.imageUrl}
           className="absolute inset-0"
-          overlayClassName="bg-linear-to-br from-slate-950/92 via-slate-900/75 to-sky-900/65"
         />
         <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_35%)]" />
 
@@ -718,7 +717,7 @@ export default function GroupDetailsPage() {
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Your net balance</p>
               <p className="mt-2 text-3xl font-semibold text-slate-900">
-                {group.currency}{" "}
+                {group.currency}
                 {viewerNet.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,

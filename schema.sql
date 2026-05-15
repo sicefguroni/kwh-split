@@ -1,5 +1,7 @@
 -- KWH-Split Database Schema
 -- PostgreSQL schema for expense splitting application
+-- This file is the base schema. Apply `pnpm db:migrate` after loading it so later
+-- feature migrations stay in sync with the server code.
 
 -- Create USERS table
 CREATE TABLE users (
