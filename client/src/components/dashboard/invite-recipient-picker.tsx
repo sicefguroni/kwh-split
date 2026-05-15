@@ -176,7 +176,7 @@ export function InviteRecipientPicker({
                 event.preventDefault();
                 handleAddDraft();
               }}
-              placeholder="friend@example.com, or search a collaborator"
+              placeholder="friend@example.com"
               className="h-12 pl-10"
               disabled={disabled}
             />
