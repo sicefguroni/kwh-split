@@ -48,17 +48,6 @@ Classic **client ↔ server**:
 
 For **production on AWS** (VPC, RDS, Redis, ECS, CloudFront SPA), see [**infra/README.md**](infra/README.md).
 
-```mermaid
-flowchart LR
-  Browser[React_PWA]
-  API[Express_API]
-  DB[(PostgreSQL)]
-  Redis[(Redis_optional)]
-  Browser -->|REST_WebSocket| API
-  API --> DB
-  API --> Redis
-```
-
 ---
 
 ## Monorepo layout
