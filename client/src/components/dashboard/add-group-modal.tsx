@@ -8,7 +8,7 @@ import {
   InviteRecipientPicker,
   type InviteRecipientDraft,
 } from "@/components/dashboard/invite-recipient-picker";
-import type { GroupData } from "@/hooks/use-groups";
+import type { GroupData } from "@/features/groups/domain";
 import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 

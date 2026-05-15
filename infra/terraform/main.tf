@@ -5,8 +5,8 @@ locals {
   api_image    = "${aws_ecr_repository.api.repository_url}:${var.api_image_tag}"
   worker_image = "${aws_ecr_repository.worker.repository_url}:${var.worker_image_tag}"
   redis_url    = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
-  # Public site URL for CORS/cookies/OAuth (HTTPS via CloudFront when enabled).
-  web_origin = var.enable_public_site ? "https://${aws_cloudfront_distribution.site[0].domain_name}" : "http://${aws_lb.main.dns_name}"
+  # Public site URL for CORS/cookies/OAuth (custom domain or CloudFront default hostname).
+  web_origin = var.enable_public_site ? local.public_site_url : "http://${aws_lb.main.dns_name}"
 
   api_container_environment = concat(
     [

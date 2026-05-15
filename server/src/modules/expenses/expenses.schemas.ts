@@ -65,5 +65,4 @@ export const MarkPaidSchema = z.object({
 });
 
 export type ExpenseWriteInput = z.infer<typeof ExpenseWriteSchema>;
-export type UpdateExpenseInput = z.infer<typeof UpdateExpenseSchema>;
 export type MemberDiscountType = z.infer<typeof MemberDiscountTypeSchema>;

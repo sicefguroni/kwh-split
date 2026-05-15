@@ -19,7 +19,7 @@ import {
   useUpdateGroupMutation,
 } from "@/features/groups/use-groups";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
-import type { GroupData } from "@/hooks/use-groups";
+import type { GroupData } from "@/features/groups/domain";
 import { ApiError } from "@/lib/api-client";
 import { resolveViewerMemberId } from "@/lib/group-money";
 

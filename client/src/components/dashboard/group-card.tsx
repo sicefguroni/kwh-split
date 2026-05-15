@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { GroupAvatar } from "@/components/dashboard/group-media";
-import type { GroupMember } from "@/hooks/use-groups";
+import type { GroupMember } from "@/features/groups/domain";
 
 const ACTION_MENU_WIDTH = 160;
 const ACTION_MENU_HEIGHT = 104;

@@ -176,5 +176,113 @@ The client connects to `wss://<your-cloudfront-domain>/api/realtime` (same origi
 
 After changing `cloudfront.tf` or ALB settings, run `terraform apply` and wait for the distribution to deploy (~5–15 min).
 
-**Custom domain later:** ACM cert in **us-east-1**, attach to CloudFront, set `aliases` + `viewer_certificate` in `cloudfront.tf`, update Google OAuth URLs.
+## Custom domain (Route 53)
+
+Your app stack stays in **`ap-southeast-1`**. Only the **ACM certificate for CloudFront** is created in **`us-east-1`** (AWS requirement for custom hostnames on CloudFront).
+
+**Which path is faster?**
+
+| Path | Typical time to **Issued** cert | Caveat |
+|------|---------------------------------|--------|
+| **B — validation CNAME at registrar** (Name.com, etc.) | Often **5–15 minutes** after you add the record | You must also point the **site hostname** at CloudFront in that same DNS (see below) until you delegate NS. |
+| **A — delegate nameservers to Route 53** | Often **15–60+ minutes** (NS propagation) | One place for all DNS; Terraform’s Route 53 A/AAAA aliases work automatically. |
+
+Use **B** if you want the certificate to validate first. Use **A** when you want Terraform to own all records long term.
+
+### Quick path B — ACM validates while DNS stays at the registrar (fastest)
+
+Use this when public NS still point at Name.com (or another host) and `aws_acm_certificate_validation` has been waiting a long time.
+
+1. **AWS Console** → **Certificate Manager** → region **US East (N. Virginia)** → open the pending certificate for your `site_domain`.
+2. Under **Domains**, copy the **CNAME name** and **CNAME value** for validation.
+3. At your **registrar DNS** (Name.com: **DNS Records** for the domain), add a **CNAME** with exactly that name and value. (Some UIs want only the left-hand label before your domain; match what Name.com’s help shows for ACM-style records.)
+4. Verify from your machine (replace with the validation hostname ACM shows):
+
+   ```bash
+   dig CNAME _xxxxxxxx.kwhsplit.app +short
+   ```
+
+   It should return ACM’s target. Within a few minutes ACM should show **Issued**; re-run `terraform apply` if it had failed or timed out.
+
+5. **Site traffic on the same hostname:** Until nameservers point at Route 53, Terraform’s **A/AAAA alias** records exist only inside your Route 53 zone—the public Internet still reads Name.com. Add at Name.com whichever they support aimed at CloudFront:
+
+   - **Subdomain** (e.g. `app`): CNAME → `xxxxxxxx.cloudfront.net` (see `terraform output -raw cloudfront_domain_name`).
+   - **Apex** (`kwhsplit.app`): many registrars need **ALIAS/ANAME/flattened CNAME** to `xxxxxxxx.cloudfront.net`; check Name.com’s docs.
+
+Later you can switch to **path A** so Route 53 (and Terraform) is authoritative and you can drop the duplicate registrar records.
+
+### 1. Route 53 hosted zone
+
+1. Route 53 → **Hosted zones** → **Create hosted zone** for your domain (e.g. `example.com`).
+2. Copy the hosted zone **ID** (Terraform `route53_zone_id`).
+
+### 1a. Path A — delegate nameservers at your registrar
+
+ACM and Terraform-managed **apex** aliases only apply when **public resolvers query Route 53**. If NS still point at Name.com (`*.name.com`), validation records created only in Route 53 stay invisible unless you did **path B** above.
+
+1. Get the four nameservers for your hosted zone:
+
+   ```bash
+   aws route53 get-hosted-zone --id YOUR_HOSTED_ZONE_ID \
+     --query 'DelegationSet.NameServers' --output text
+   ```
+
+2. At the **registrar** (Name.com: **My Domains** → your domain → **Nameservers** → **custom**), replace entries with exactly those four AWS hostnames.
+
+3. After propagation (often 15–60 minutes), confirm:
+
+   ```bash
+   dig NS yourdomain.example +short
+   ```
+
+   Expect `*.awsdns-*` hosts.
+
+### 2. Configure Terraform
+
+In local `terraform.tfvars` (not committed):
+
+```hcl
+site_domain     = "app.example.com"              # hostname users will open
+route53_zone_id = "Z0123456789ABCDEFGHIJ"
+# site_domain_aliases = ["www.example.com"]      # optional
+```
+
+### 3. Apply
+
+```bash
+cd infra/terraform
+terraform init    # picks up the us-east-1 provider alias
+terraform plan
+terraform apply
+```
+
+Terraform will:
+
+- Request an ACM cert in **us-east-1** and create **DNS validation** CNAMEs in your zone
+- Attach the cert to CloudFront (`aliases` + HTTPS)
+- Create **A/AAAA alias** records from `site_domain` (and aliases) to CloudFront
+- Set ECS **`WEB_ORIGIN`** and **`OAUTH_CALLBACK_BASE_URL`** to `https://app.example.com`
+
+Wait until ACM shows **Issued** and CloudFront status **Deployed** (often 5–20 minutes).
+
+### 4. Google OAuth
+
+Update the OAuth client (replace with your `site_domain`):
+
+- **Authorized JavaScript origins:** `https://app.example.com`
+- **Authorized redirect URIs:** `https://app.example.com/api/auth/google/callback`
+
+### 5. Deploy SPA and verify
+
+```bash
+pnpm deploy:site
+curl -sS "$(terraform output -raw site_url)/api/health"
+```
+
+Outputs:
+
+- `site_url` — custom URL when `site_domain` is set, otherwise `https://….cloudfront.net`
+- `cloudfront_domain_name` — default CloudFront hostname (still works during cutover)
+
+To remove a custom domain later, clear `site_domain` / `route53_zone_id` in tfvars and `terraform apply` (CloudFront returns to the default certificate).
 

@@ -68,6 +68,5 @@ export const AcceptInvitationSchema = z.object({
 export type CreateGroupInput = z.infer<typeof CreateGroupSchema>;
 export type UpdateGroupInput = z.infer<typeof UpdateGroupSchema>;
 export type JoinGroupInput = z.infer<typeof JoinGroupSchema>;
-export type InviteByEmailInput = z.infer<typeof InviteByEmailSchema>;
 export type CreateInvitationsInput = z.infer<typeof CreateInvitationsSchema>;
 export type AcceptInvitationInput = z.infer<typeof AcceptInvitationSchema>;

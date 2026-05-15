@@ -61,6 +61,14 @@ For **production on AWS** (VPC, RDS, Redis, ECS, CloudFront SPA), see [**infra/R
 
 ---
 
+## Code organization & style
+
+The codebase follows conventional **feature / module** boundaries (e.g. [`server/src/modules/groups/`](server/src/modules/groups/) splits **public DTOs**, **invite/rate-limit helpers**, **HTTP↔DB mapping**, and the **service** orchestration layer). On the client, shared **domain types** for screens live under [`client/src/features/groups/domain.ts`](client/src/features/groups/domain.ts) beside API types and React Query hooks—avoid misnamed “catch-all” hooks for static types.
+
+When adding code, prefer **small functions** with **clear names**, **few parameters**, and **one responsibility**—aligned with *Clean Code*
+
+---
+
 ## Tech stack
 
 | Layer | Choices |

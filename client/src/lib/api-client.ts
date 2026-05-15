@@ -1,6 +1,6 @@
 import { ensureSessionRefreshed } from "./session-refresh.js";
 
-export interface ApiErrorPayload {
+interface ApiErrorPayload {
   error: { code: string; message: string };
 }
 
@@ -64,7 +64,7 @@ async function request<T>(
     ...(options.signal ? { signal: options.signal } : {}),
   };
 
-  let response = await fetch(path, fetchInit);
+  const response = await fetch(path, fetchInit);
 
   if (
     response.status === 401 &&

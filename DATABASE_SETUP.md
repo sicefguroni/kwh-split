@@ -1,187 +1,231 @@
-# KWH-Split Database Setup Guide
+# KWH-Split Database Architecture & Setup
 
-This PostgreSQL database schema implements an expense-splitting application that allows groups of users to track and split shared expenses.
+This document serves as the central reference for the application's PostgreSQL database. It includes setup instructions, an Entity-Relationship (ER) diagram, and detailed human-readable tables explaining the schema.
 
-## Database Schema Overview
+---
 
-The database consists of 8 main tables:
-
-1. **users** - User account information
-2. **groups** - Groups for organizing expenses
-3. **group_members** - Junction table linking users to groups
-4. **expensers** - Individual expenses within groups
-5. **receipt_items** - Line items from receipts (optional)
-6. **receipt_items_assignments** - Assignment of items to users
-7. **expense_splits** - How expenses are split among users
-8. **user_auth_providers** - Linked OAuth identities (Google)
-
-## Setup Instructions
+## 1. Local Database Setup
 
 ### Prerequisites
 - PostgreSQL 12+ installed and running
-- psql command-line tool or a PostgreSQL GUI client
+- `psql` command-line tool
+- Node.js & `pnpm` installed
 
 ### Step 1: Create the Database
-
+Create an empty database named `kwh_split`:
 ```bash
-createdb kwh_split
+createdb -U postgres kwh_split
 ```
 
-Or using psql:
-```sql
-CREATE DATABASE kwh_split;
-```
-
-### Step 2: Connect to the Database
-
+### Step 2: Apply Migrations
+The database schema is fully managed by our migration runner. Instead of importing a static SQL dump, you must run the migrations to build the schema incrementally:
 ```bash
-psql -U postgres -d kwh_split
+cd server
+DATABASE_HOST=localhost DATABASE_USER=postgres DATABASE_PASSWORD= DATABASE_PORT=5432 DATABASE_NAME=kwh_split pnpm db:migrate
 ```
 
-### Step 3: Load the Schema
+*(Note: The above command overrides the `.env` default to target your local `kwh_split` database).*
 
-Execute the schema.sql file to create all tables and indexes:
+---
 
-```bash
-psql -U postgres -d kwh_split -f schema.sql
+## 2. Entity-Relationship Diagram
+
+```mermaid
+erDiagram
+    users ||--o{ user_auth_providers : "has"
+    users ||--o{ user_bank_accounts : "has"
+    users ||--o{ group_members : "belongs to"
+    users ||--o{ expenses : "pays"
+    users ||--o{ expense_splits : "owes"
+    users ||--o{ settlement_events : "pays/receives"
+    users ||--o{ group_notifications : "receives"
+    
+    groups ||--o{ group_members : "contains"
+    groups ||--o{ expenses : "has"
+    groups ||--o{ group_invitations : "has"
+    groups ||--o{ settlement_events : "has"
+    
+    expenses ||--o{ expense_splits : "split into"
+    expenses ||--o{ receipt_items : "contains"
+    expenses ||--o{ expense_member_discounts : "applies"
+    
+    receipt_items ||--o{ receipt_item_assignments : "assigned to"
+    users ||--o{ receipt_item_assignments : "pays for"
 ```
 
-Or in psql:
-```sql
-\i schema.sql
-```
+---
 
-### Step 4: Apply Migrations
+## 3. Schema Documentation
 
-The checked-in schema is only the base snapshot. Run the migration runner so later
-auth and profile columns are present in your local database:
+### Core Identity & Access
 
-```bash
-pnpm db:migrate
-```
+#### `users`
+Stores user accounts, profile details, and global discount statuses.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `user_id` | Integer | **PK** | Unique identifier |
+| `name` | Varchar(255) | Not Null | Display name |
+| `email` | Varchar(255) | **Unique**, Not Null | User's email address |
+| `password` | Varchar(255) | Not Null | Hashed password |
+| `is_active` | Boolean | Default `true` | Soft-delete / account status |
+| `avatar_url` | Varchar(500) | | External Avatar URL |
+| `profile_image_url`| Text | | Uploaded profile image URL |
+| `bank_qr_url` | Text | | QR code image for peer-to-peer payments |
+| `discount_type` | Varchar(50) | Default `none` | `none`, `pwd`, or `senior` |
+| `email_verified`| Boolean | | Whether email is verified |
 
-### Step 5: Load Sample Data (Optional)
+#### `user_auth_providers`
+Links third-party social logins (like Google) to existing users.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `auth_provider_id`| Integer | **PK** | Unique identifier |
+| `user_id` | Integer | **FK** (`users`) | The linked user account |
+| `provider` | Varchar(30) | Not Null | E.g., `google` |
+| `provider_user_id`| Varchar(255) | Not Null | External unique ID from the provider |
+| `provider_email` | Varchar(255) | | External email |
 
-To populate the database with sample data:
+#### `user_bank_accounts`
+Stores banking details to facilitate external settlements.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `bank_account_id` | Integer | **PK** | Unique identifier |
+| `user_id` | Integer | **FK** (`users`) | The owner of the bank account |
+| `bank_name` | Varchar(255) | Not Null | Name of the bank |
+| `account_number` | Varchar(100) | Not Null | The account number |
 
-```bash
-psql -U postgres -d kwh_split -f sample_data.sql
-```
+---
 
-Or in psql:
-```sql
-\i sample_data.sql
-```
+### Groups & Collaboration
 
-## Database Tables
+#### `groups`
+Shared workspaces where users pool expenses.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `group_id` | Integer | **PK** | Unique identifier |
+| `name` | Varchar(255) | Not Null | Name of the group |
+| `description` | Text | | Context / description of the group |
+| `currency` | Varchar(10) | Default `USD` | Base currency |
+| `invite_token` | Varchar(255) | **Unique** | Public token for invite links |
+| `image_url` | Text | | Group cover image |
 
-### Users Table
-Stores user account information
-- `user_id` (Primary Key)
-- `name` - User's display name
-- `email` - Unique email address
-- `password` - Hashed password
-- `is_active` - Account status
-- `avatar_url` - Optional profile image URL
-- `email_verified` - Optional email verification status from provider
-- `profile_image_url` - Optional uploaded profile image URL
-- `bank_qr_url` - Optional bank or wallet QR image URL
-- `discount_type` - Discount category (`none`, `pwd`, `senior`)
-- `created_at`, `updated_at` - Timestamps
+#### `group_members`
+Junction table tracking who belongs to which group and their roles.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `member_id` | Integer | **PK** | Unique identifier |
+| `group_id` | Integer | **FK** (`groups`) | The target group |
+| `user_id` | Integer | **FK** (`users`) | The member |
+| `role` | Varchar(50) | Default `member` | E.g., `admin`, `member` |
+| `is_active` | Boolean | Default `true` | Handles soft-leaves/deletes |
+| `discount_type` | Varchar(50) | Default `none` | Group-specific override (`none`, `pwd`, `senior`) |
 
-### User Auth Providers Table
-Stores social login identities linked to app users
-- `auth_provider_id` (Primary Key)
-- `user_id` (Foreign Key) - References users
-- `provider` - Provider name (`google`)
-- `provider_user_id` - Stable provider user identifier
-- `provider_email` - Email returned by provider
-- `created_at`, `updated_at` - Timestamps
+#### `group_invitations`
+Pending invites sent via email.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `invitation_id` | Integer | **PK** | Unique identifier |
+| `group_id` | Integer | **FK** (`groups`) | The group being invited to |
+| `inviter_user_id` | Integer | **FK** (`users`) | Who sent the invite |
+| `invitee_email` | Varchar(255) | Not Null | Email address invited |
+| `status` | Varchar(50) | Default `pending` | `pending`, `accepted`, `declined`, `expired`, `left` |
+| `invite_token` | Varchar(255) | **Unique** | Secure token for the email link |
 
-### Groups Table
-Stores group information for organizing expenses
-- `group_id` (Primary Key)
-- `name` - Group name
-- `description` - Group description
-- `currency` - Currency code (e.g., 'USD')
-- `created_at`, `updated_at` - Timestamps
+#### `group_notifications`
+Activity feed events for users (e.g. "User X added an expense").
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `notification_id` | Integer | **PK** | Unique identifier |
+| `user_id` | Integer | **FK** (`users`) | The user receiving the notification |
+| `actor_user_id` | Integer | **FK** (`users`) | The user who performed the action |
+| `group_id` | Integer | **FK** (`groups`) | The related group context |
+| `type` | Varchar(64) | Not Null | E.g. `expense_added`, `member_joined` |
+| `title` | Varchar(255) | Not Null | Notification title |
+| `message` | Text | Not Null | Notification body content |
 
-### Group Members Table
-Junction table connecting users to groups with roles
-- `member_id` (Primary Key)
-- `group_id` (Foreign Key) - References groups
-- `user_id` (Foreign Key) - References users
-- `role` - Member role (admin, member, etc.)
-- `created_at`, `updated_at` - Timestamps
+---
 
-### Expensers Table
-Records individual expenses within groups
-- `expense_id` (Primary Key)
-- `group_id` (Foreign Key) - References groups
-- `title_description` - Expense description
-- `total_amount` - Total expense amount
-- `sale_date` - Date of expense
-- `tax_amount` - Tax amount (if applicable)
-- `tip_amount` - Tip amount (if applicable)
-- `split_type` - How to split ('equal', 'itemized', 'percentage', etc.)
-- `receipt_items_flag` - Whether itemized receipt is used
-- `receipt_image_url` - URL to receipt image
-- `created_at`, `updated_at` - Timestamps
+### Expenses & Receipts
 
-### Receipt Items Table
-Line items from itemized receipts
-- `item_id` (Primary Key)
-- `expense_id` (Foreign Key) - References expensers
-- `item_name` - Description of item
-- `price` - Price of item
-- `created_at`, `updated_at` - Timestamps
+#### `expenses`
+A single shared bill or purchase.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `expense_id` | Integer | **PK** | Unique identifier |
+| `group_id` | Integer | **FK** (`groups`) | The group the expense belongs to |
+| `payer_user_id` | Integer | **FK** (`users`) | Who fronted the money |
+| `title_description`| Varchar(255) | Not Null | What was purchased |
+| `total_amount` | Numeric(10,2) | Not Null | The total bill amount |
+| `sale_date` | Date | Not Null | When the purchase happened |
+| `tax_amount` | Numeric(10,2) | Default `0.00` | Tax component of the total |
+| `tip_amount` | Numeric(10,2) | Default `0.00` | Tip component of the total |
+| `split_type` | Varchar(50) | Default `equal`| `equal`, `percentage`, `shares`, `exact`, `itemized` |
+| `category` | Varchar(100) | Default `General` | E.g. `Food`, `Transport` |
+| `client_expense_uuid`| UUID | **Unique** | Ensures idempotency for offline syncs |
 
-### Receipt Items Assignments Table
-Assigns individual receipt items to users
-- `assignment_id` (Primary Key)
-- `item_id` (Foreign Key) - References receipt_items
-- `user_id` (Foreign Key) - References users
-- `created_at`, `updated_at` - Timestamps
+#### `receipt_items`
+Extracted line items from a receipt (often via OCR).
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `item_id` | Integer | **PK** | Unique identifier |
+| `expense_id` | Integer | **FK** (`expenses`) | The parent expense |
+| `item_name` | Varchar(255) | Not Null | Description of the item |
+| `price` | Numeric(10,2) | Not Null | Cost of the item |
+| `raw_ocr_text` | Text | | Raw text extracted from TabScanner |
+| `ocr_confidence` | Numeric(5,2) | | Confidence score from the OCR engine |
 
-### Expense Splits Table
-Records how each expense is split among users
-- `split_id` (Primary Key)
-- `expense_id` (Foreign Key) - References expensers
-- `user_id` (Foreign Key) - References users
-- `amount_owed` - Amount owed by this user
-- `percentage` - Percentage share
-- `share` - Custom share amount (if applicable)
-- `is_settled` - Whether this split has been paid
-- `created_at`, `updated_at` - Timestamps
+#### `receipt_item_assignments`
+Tracks which users are sharing the cost of specific receipt items.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `assignment_id` | Integer | **PK** | Unique identifier |
+| `item_id` | Integer | **FK** (`receipt_items`) | The specific item |
+| `user_id` | Integer | **FK** (`users`) | The user consuming the item |
 
-## Key Constraints
+---
 
-- **Foreign Keys**: All foreign keys have `ON DELETE CASCADE` to maintain referential integrity
-- **Unique Constraints**: 
-  - `users.email` - Email must be unique
-  - `group_members` - Each user can only have one membership per group
-  - `receipt_items_assignments` - Each user can only be assigned to an item once
-  - `user_auth_providers` - One identity per provider account and one account per provider per user
-- **Default Values**: Timestamps automatically set to current time
+### Splitting & Settlements
 
-## Useful Queries
+#### `expense_splits`
+The calculated breakdown of exactly how much each user owes for an expense.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `split_id` | Integer | **PK** | Unique identifier |
+| `expense_id` | Integer | **FK** (`expenses`) | The parent expense |
+| `user_id` | Integer | **FK** (`users`) | The user who owes |
+| `amount_owed` | Numeric(10,2) | Not Null | Final calculated debt amount |
+| `original_amount` | Numeric(10,2) | | The amount owed before discounts |
+| `percentage` | Numeric(5,2) | | If `split_type` was `percentage` |
+| `share` | Numeric(10,2) | | If `split_type` was `shares` |
+| `is_settled` | Boolean | Default `false` | Whether the debt is paid off |
 
-### Get all members of a group
-```sql
-SELECT u.name, gm.role 
-FROM group_members gm
-JOIN users u ON gm.user_id = u.user_id
-WHERE gm.group_id = 1;
-```
+#### `expense_member_discounts`
+Tracks PWD/Senior discounts explicitly applied to an expense.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `expense_member_discount_id` | Integer | **PK** | Unique ID |
+| `expense_id` | Integer | **FK** (`expenses`) | Parent expense |
+| `user_id` | Integer | **FK** (`users`) | Who gets the discount |
+| `discount_type`| Varchar(20) | Not Null | `pwd` or `senior` |
+| `rate_percent` | Numeric(5,2) | Default `20.00` | The discount rate |
 
-### Get total expenses for a group
-```sql
-SELECT SUM(total_amount) as total_expenses
-FROM expensers
-WHERE group_id = 1;
-```
+#### `settlement_events`
+Records real-world payments made to clear debts between group members.
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `settlement_event_id` | Integer | **PK** | Unique identifier |
+| `group_id` | Integer | **FK** (`groups`) | Group context |
+| `from_user_id` | Integer | **FK** (`users`) | Who paid |
+| `to_user_id` | Integer | **FK** (`users`) | Who received the money |
+| `amount_paid` | Numeric(10,2) | Not Null | Actual money transferred |
+| `payment_method` | Varchar(50) | Default `other` | `cash`, `bank`, `wallet` |
+| `reference` | Varchar(120) | | Optional transaction ID |
+| `status` | Varchar(50) | Default `confirmed`| `pending`, `confirmed` |
 
-### Get amount owed by a user
+---
+
+## 4. Useful Queries
+
+### Check overall group debt
 ```sql
 SELECT u.name, SUM(es.amount_owed) as total_owed
 FROM expense_splits es
@@ -190,18 +234,11 @@ WHERE u.user_id = 1 AND es.is_settled = false
 GROUP BY u.user_id, u.name;
 ```
 
-### Get all settled and unsettled splits
+### View all settled and unsettled splits
 ```sql
 SELECT e.title_description, u.name, es.amount_owed, es.is_settled
 FROM expense_splits es
-JOIN expensers e ON es.expense_id = e.expense_id
+JOIN expenses e ON es.expense_id = e.expense_id
 JOIN users u ON es.user_id = u.user_id
 WHERE e.group_id = 1;
 ```
-
-## Notes
-
-- All monetary amounts are stored as DECIMAL(10, 2) for precision
-- Timestamps are automatically set to UTC
-- The schema uses snake_case for table and column names (PostgreSQL convention)
-- Indexes are created on all foreign keys and commonly queried fields for performance
