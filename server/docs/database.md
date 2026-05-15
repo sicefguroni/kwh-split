@@ -37,6 +37,163 @@ applies pending files in lexical order, each inside a transaction.
 pnpm db:migrate
 ```
 
+Production image (after `pnpm --filter @split/server run build` / Docker): the same runner includes `dist/db/migrations/*.sql` and you can run:
+
+```bash
+DATABASE_URL="postgres://..." node dist/db/migrate.js
+# or: pnpm --filter @split/server run db:migrate:prod
+```
+
+## Migrations on AWS RDS (private subnet)
+
+Terraform puts RDS in **private subnets** with a security group that only allows **Postgres from the ECS task security group**. Your laptop cannot reach RDS until you either open the SG briefly or run migrations from ECS.
+
+### Option A — Temporary “your IP” rule (simplest)
+
+**Shell note:** examples below use **bash / zsh** (`VAR=$(cmd)`, `export`). In **fish**, use `set VAR (cmd)` and `set -gx VAR value` instead of `export`.
+
+**New `output` values:** `terraform output ...` only works for outputs already stored in state. If you see **“Output … not found”** after adding outputs to `.tf` files, run **`terraform apply`** once from `infra/terraform/` (often no infrastructure changes), **or** use the **`terraform console`** lines below—they read live resource attributes from state and work immediately.
+
+1. **Get values from Terraform** (from `infra/terraform/`):
+
+   ```bash
+   terraform output -raw rds_endpoint
+   # If that fails:
+   # printf 'aws_db_instance.postgres.address\n' | terraform console | tr -d '"\r\n'
+   ```
+
+2. **Your public IP** (must be the same path the Internet sees, e.g. no VPN surprise):
+
+   ```bash
+   curl -sSf https://checkip.amazonaws.com
+   ```
+
+3. **Allow inbound 5432 from your IP** (keep `/32`). **`SG_ID`** uses `terraform console` so it works even before `terraform output rds_security_group_id` exists in state:
+
+   **bash / zsh**
+
+   ```bash
+   SG_ID="$(printf 'aws_security_group.rds.id\n' | terraform console | tr -d '"\r\n')"
+   MYIP="$(curl -sSf https://checkip.amazonaws.com)"
+   aws ec2 authorize-security-group-ingress \
+     --group-id "$SG_ID" \
+     --protocol tcp \
+     --port 5432 \
+     --cidr "${MYIP}/32"
+   ```
+
+   **fish**
+
+   ```fish
+   set SG_ID (printf 'aws_security_group.rds.id\n' | terraform console | string replace -a '"' '' | string trim)
+   set MYIP (curl -sSf https://checkip.amazonaws.com)
+   aws ec2 authorize-security-group-ingress \
+     --group-id $SG_ID \
+     --protocol tcp \
+     --port 5432 \
+     --cidr "$MYIP/32"
+   ```
+
+4. **Build URL and migrate** from the **repo root**. DB name and user are `split` (see `infra/terraform/main.tf`). **URL-encode** the password if it contains `@`, `#`, `/`, spaces, etc. (otherwise the URL parser breaks).
+
+   **Easier for complex passwords:** omit `DATABASE_URL` and set `DATABASE_HOST`, `DATABASE_USER`, `DATABASE_PASSWORD`, `DATABASE_NAME` (`split` on RDS), `DATABASE_PORT` — the app builds a safe connection string (or leave a bad `DATABASE_URL` in place **and** set `DATABASE_HOST`; the pool will ignore the URI and use the `DATABASE_*` fields).
+
+   **bash / zsh**
+
+   ```bash
+   export DATABASE_URL='postgres://split:URL_ENCODED_PASSWORD@RDS_HOST:5432/split'
+   pnpm db:migrate
+   ```
+
+   **fish**
+
+   ```fish
+   set -gx DATABASE_URL 'postgres://split:URL_ENCODED_PASSWORD@RDS_HOST:5432/split'
+   pnpm db:migrate
+   ```
+
+5. **Remove the rule** when done (use rule IDs from the authorize output, or EC2 console → security group → inbound rules):
+
+   **bash / zsh**
+
+   ```bash
+   aws ec2 revoke-security-group-ingress \
+     --group-id "$SG_ID" \
+     --protocol tcp \
+     --port 5432 \
+     --cidr "${MYIP}/32"
+   ```
+
+   **fish**
+
+   ```fish
+   aws ec2 revoke-security-group-ingress \
+     --group-id $SG_ID \
+     --protocol tcp \
+     --port 5432 \
+     --cidr "$MYIP/32"
+   ```
+
+### Option B — One-off ECS Fargate task (no public RDS exposure)
+
+Use this when you do **not** want to open RDS to the Internet. Requires an **API** task definition that already uses your **pushed ECR image** (the Dockerfile copies `server/src/db/migrations` into `dist/db/migrations`).
+
+1. From `infra/terraform/` (values from **`terraform console`** so this works even if newer `output` blocks are not in state yet):
+
+   **bash / zsh**
+
+   ```bash
+   CLUSTER="$(printf 'aws_ecs_cluster.main.name\n' | terraform console | tr -d '"\r\n')"
+   SUBNETS="$(printf 'join(",", aws_subnet.public[*].id)\n' | terraform console | tr -d '"\r\n')"
+   SG="$(printf 'aws_security_group.ecs.id\n' | terraform console | tr -d '"\r\n')"
+   ```
+
+   **fish**
+
+   ```fish
+   set CLUSTER (printf 'aws_ecs_cluster.main.name\n' | terraform console | string replace -a '"' '' | string trim)
+   set SUBNETS (printf 'join(",", aws_subnet.public[*].id)\n' | terraform console | string replace -a '"' '' | string trim)
+   set SG (printf 'aws_security_group.ecs.id\n' | terraform console | string replace -a '"' '' | string trim)
+   ```
+
+2. Register a one-off task or reuse the latest **API** task definition revision from the console / `aws ecs describe-task-definition --task-definition …`.
+
+3. **Run** (replace `TASK_DEF_ARN` with the family or full ARN of your **API** task definition, and `api` with that task’s **container name**):
+
+   **bash / zsh**
+
+   ```bash
+   CONTAINER="api"   # or whatever name is in the task definition JSON
+   aws ecs run-task \
+     --cluster "$CLUSTER" \
+     --launch-type FARGATE \
+     --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+     --task-definition "$TASK_DEF_ARN" \
+     --overrides "$(jq -n \
+       --arg url 'postgres://split:PASSWORD@HOST:5432/split' \
+       --arg name "$CONTAINER" \
+       '{containerOverrides:[{name:$name,command:["node","dist/db/migrate.js"],environment:[{name:"DATABASE_URL",value:$url}]}]}')"
+   ```
+
+   **fish**
+
+   ```fish
+   set CONTAINER api   # or whatever name is in the task definition JSON
+   aws ecs run-task \
+     --cluster $CLUSTER \
+     --launch-type FARGATE \
+     --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[$SG],assignPublicIp=ENABLED}" \
+     --task-definition "$TASK_DEF_ARN" \
+     --overrides (jq -n \
+       --arg url 'postgres://split:PASSWORD@HOST:5432/split' \
+       --arg name $CONTAINER \
+       '{containerOverrides:[{name:$name,command:["node","dist/db/migrate.js"],environment:[{name:"DATABASE_URL",value:$url}]}]}')
+   ```
+
+4. Watch exit code: **CloudWatch** log stream for that task, or `aws ecs describe-tasks` until `lastStatus` is `STOPPED` and check `stoppedReason` / container exit code.
+
+Use **Secrets Manager** or **ECS secrets** for `DATABASE_URL` in real workflows instead of inline passwords in shell history.
+
 ## Bootstrapping a fresh local database
 
 Create a Postgres database and role (or use your host’s usual workflow), then:
