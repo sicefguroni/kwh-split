@@ -1,9 +1,12 @@
 import type { NextFunction, Request, Response } from "express";
 import { authService } from "./auth.service.js";
 import type { LoginInput, SignupInput, UpdateProfileInput } from "./auth.schemas.js";
-import { clearAuthCookies, setAuthCookies } from "../../utils/cookies.js";
+import { clearAuthCookies, ACCESS_COOKIE, REFRESH_COOKIE, setAuthCookies } from "../../utils/cookies.js";
 import { getAuthenticatedUserId } from "../../middleware/require-auth.js";
 import { env } from "../../config/env.js";
+import { unauthorized } from "../../utils/errors.js";
+import { verifyAccessToken } from "../../utils/jwt.js";
+import { clearUserSessionActive } from "../../lib/auth-session-redis.js";
 import type { AuthProvider } from "./auth.repository.js";
 
 type TypedBody<T> = Request<unknown, unknown, T>;
@@ -125,9 +128,37 @@ export const authController = {
     }
   },
 
-  logout(_req: Request, res: Response): void {
-    clearAuthCookies(res);
-    res.status(204).end();
+  async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const accessToken = req.cookies?.[ACCESS_COOKIE];
+      if (typeof accessToken === "string" && accessToken.length > 0) {
+        try {
+          const claims = await verifyAccessToken(accessToken);
+          await clearUserSessionActive(claims.sub);
+        } catch {
+          // Ignore invalid access token during logout.
+        }
+      }
+      clearAuthCookies(res);
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async refresh(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const refreshToken = req.cookies?.[REFRESH_COOKIE];
+      if (typeof refreshToken !== "string" || refreshToken.length === 0) {
+        next(unauthorized("Missing refresh token"));
+        return;
+      }
+      const tokens = await authService.refreshFromRefreshCookie(refreshToken);
+      setAuthCookies(res, tokens);
+      res.status(204).end();
+    } catch (error) {
+      next(error);
+    }
   },
 
   async me(req: Request, res: Response, next: NextFunction): Promise<void> {
