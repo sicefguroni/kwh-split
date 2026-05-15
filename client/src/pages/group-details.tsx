@@ -640,7 +640,7 @@ export default function GroupDetailsPage() {
                           {/* Right: amount + your share */}
                           <div className="flex-shrink-0 text-right">
                             <p className="font-bold text-slate-900">
-                              {group.currency}{expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              {group.currency} {expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </p>
                             <p className="mt-0.5 text-xs text-slate-500">
                               your share{" "}
@@ -648,7 +648,7 @@ export default function GroupDetailsPage() {
                                 <span className="font-semibold text-emerald-700">PAID</span>
                               ) : viewerSplit ? (
                                 <span className="font-semibold text-slate-700">
-                                  {group.currency}{viewerSplit.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {group.currency} {viewerSplit.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               ) : (
                                 <span className="font-semibold text-slate-400">—</span>

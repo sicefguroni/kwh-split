@@ -12,6 +12,7 @@ interface DashboardHeaderProps {
   onDismissAction?: () => void;
   deletedGroupNotification?: string | null;
   onDismissDeletedNotification?: () => void;
+  showHome?: boolean;
 }
 
 export function DashboardHeader({
@@ -22,12 +23,15 @@ export function DashboardHeader({
   onDismissAction,
   deletedGroupNotification,
   onDismissDeletedNotification,
+  showHome = true,
 }: DashboardHeaderProps) {
   const navigate = useNavigate();
 
   return (
-    <header className="border-b border-ink-100/60 bg-white/95">
-      <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+    <header className="sticky top-0 z-50 border-b border-ink-100/60 bg-white/95 backdrop-blur-sm">
+      <div className="mx-auto flex max-w-3xl items-center gap-4 px-4 py-3 sm:px-6">
+
+        {/* Left: Logo + Home */}
         <div className="flex items-center gap-3">
           <Logo size="sm" className="h-6 md:h-7 lg:h-8" />
           {deletedGroupNotification ? (
@@ -46,6 +50,22 @@ export function DashboardHeader({
           ) : null}
         </div>
 
+        {showHome ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate("/dashboard")}
+            aria-label="Home"
+          >
+            <Home className="h-4 w-4" />
+            <span className="hidden sm:inline">Home</span>
+          </Button>
+        ) : null}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Right: Notifications, Profile, Log out */}
         <div className="flex items-center gap-2">
           {!isOnline ? (
             <span
@@ -58,15 +78,6 @@ export function DashboardHeader({
             </span>
           ) : null}
           <NotificationCenter />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate("/dashboard")}
-            aria-label="Home"
-          >
-            <Home className="h-4 w-4" />
-            <span className="hidden sm:inline">Home</span>
-          </Button>
           <Button
             variant="ghost"
             size="sm"

@@ -76,7 +76,6 @@ function PaymentConfirmationModal({
               style={{
                 fontSize: "14px",
                 color: "#dc2626",
-                fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 500,
                 textAlign: "center",
                 margin: 0,
@@ -97,7 +96,6 @@ function PaymentConfirmationModal({
     <p
       style={{
         fontSize: "16px",
-        fontFamily: "'Plus Jakarta Sans', sans-serif",
         fontWeight: 400,
         lineHeight: 1.4,
       }}
@@ -151,7 +149,6 @@ function PaymentConfirmationModal({
       <span
         style={{
           fontSize: "12px",
-          fontFamily: "'Plus Jakarta Sans', sans-serif",
           fontWeight: 400,
         }}
         className="text-muted-foreground"
@@ -164,7 +161,6 @@ function PaymentConfirmationModal({
   <p
     style={{
       fontSize: "14px",
-      fontFamily: "'Plus Jakarta Sans', sans-serif",
       fontWeight: 400,
       lineHeight: 1.55,
     }}
