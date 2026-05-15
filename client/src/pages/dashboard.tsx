@@ -257,6 +257,7 @@ export default function DashboardPage() {
         onDismissAction={() => setActionMessage(null)}
         deletedGroupNotification={deletedGroupNotification}
         onDismissDeletedNotification={() => setDeletedGroupNotification(null)}
+        showHome={false}
       />
 
       <div className="relative overflow-hidden pt-4 text-white lg:pt-8">
