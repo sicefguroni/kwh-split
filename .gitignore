@@ -38,6 +38,7 @@ coverage
 *.tfstate
 *.tfstate.*
 infra/terraform/.build/
+infra/terraform/tf-access-test-empty.txt
 infra/terraform/terraform.tfvars
 infra/terraform/*.auto.tfvars
 
