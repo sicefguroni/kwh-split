@@ -1,3 +1,5 @@
+import { ensureSessionRefreshed } from "./session-refresh.js";
+
 export interface ApiErrorPayload {
   error: { code: string; message: string };
 }
@@ -20,10 +22,26 @@ interface RequestOptions {
   headers?: Record<string, string>;
 }
 
+const AUTH_REFRESH_SKIP_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/signup",
+  "/api/auth/refresh",
+  "/api/auth/logout",
+]);
+
+function shouldAttemptSessionRefresh(path: string): boolean {
+  const pathname = path.split("?")[0] ?? path;
+  if (!pathname.startsWith("/api/")) {
+    return false;
+  }
+  return !AUTH_REFRESH_SKIP_PATHS.has(pathname);
+}
+
 async function request<T>(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   options: RequestOptions = {},
+  isRetryAfterRefresh = false,
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
   let body: BodyInit | undefined;
@@ -46,7 +64,19 @@ async function request<T>(
     ...(options.signal ? { signal: options.signal } : {}),
   };
 
-  const response = await fetch(path, fetchInit);
+  let response = await fetch(path, fetchInit);
+
+  if (
+    response.status === 401 &&
+    !isRetryAfterRefresh &&
+    shouldAttemptSessionRefresh(path) &&
+    !options.signal?.aborted
+  ) {
+    const refreshed = await ensureSessionRefreshed(options.signal);
+    if (refreshed) {
+      return request(method, path, options, true);
+    }
+  }
 
   if (response.status === 204) {
     return undefined as T;
