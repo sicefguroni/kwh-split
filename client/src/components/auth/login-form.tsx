@@ -88,7 +88,7 @@ export function LoginForm() {
         <button
           type="button"
           disabled
-          className="text-xs font-medium text-ink-400"
+          className="text-xs font-medium text-ink-400 cursor-pointer"
           aria-label="Forgot password (coming soon)"
           title="Coming soon"
         >

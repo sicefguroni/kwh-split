@@ -300,13 +300,45 @@ export function AddExpenseModal({
                 <label className="text-sm font-semibold text-slate-700">
                   {isItemsMode ? "Items" : "Total amount"}
                 </label>
-                <button
-                  type="button"
-                  onClick={toggleItemsMode}
-                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                >
-                  {isItemsMode ? "Use single amount" : "Add items"}
-                </button>
+                <div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isItemsMode}
+                    aria-label={isItemsMode ? "Use items mode" : "Use single amount mode"}
+                    onClick={toggleItemsMode}
+                    className={cn(
+                      "relative inline-grid h-10 w-48 grid-cols-2 items-center rounded-full bg-slate-200 p-1 text-[1opx] font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400/20",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "relative z-10 text-center text-[10px] transition-colors",
+                        isItemsMode ? "text-slate-500" : "text-transparent",
+                      )}
+                    >
+                      By amount
+                    </span>
+                    <span
+                      className={cn(
+                        "relative z-10 text-center text-[10px] transition-colors",
+                        isItemsMode ? "text-transparent" : "text-slate-500",
+                      )}
+                    >
+                      By items
+                    </span>
+                    <span
+                      className="pointer-events-none absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-full bg-white shadow-sm transition-transform duration-200"
+                      style={{ transform: isItemsMode ? "translateX(100%)" : "translateX(0)" }}
+                    />
+                    <span
+                      className="pointer-events-none absolute inset-y-1 left-1 flex w-[calc(50%-0.25rem)] items-center justify-center text-[10px] font-semibold text-slate-900 transition-transform duration-200"
+                      style={{ transform: isItemsMode ? "translateX(100%)" : "translateX(0)" }}
+                    >
+                      {isItemsMode ? "By items" : "By amount"}
+                    </span>
+                  </button>
+                </div>
               </div>
 
               {isItemsMode ? (
@@ -494,18 +526,21 @@ export function AddExpenseModal({
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="text-sm font-semibold text-slate-900">{member.name}</span>
                           {splitInput?.selected ? (
-                            <select
+                            <Select
                               value={splitInput.discountType ?? "none"}
-                              onChange={(e) =>
-                                updateMemberDiscountType(member.id, e.target.value as "none" | "pwd" | "senior")
+                              onValueChange={(value) =>
+                                updateMemberDiscountType(member.id, value as "none" | "pwd" | "senior")
                               }
-                              className="mt-1 h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-600"
-                              aria-label={`Discount type for ${member.name}`}
-                            >
-                              <option value="none">No discount</option>
-                              <option value="pwd">PWD (20%)</option>
-                              <option value="senior">Senior (20%)</option>
-                            </select>
+                              options={[
+                                { label: "No discount", value: "none" },
+                                { label: "PWD (20%)", value: "pwd" },
+                                { label: "Senior (20%)", value: "senior" },
+                              ]}
+                              ariaLabel={`Discount type for ${member.name}`}
+                              placeholder="No discount"
+                              triggerClassName="mt-1 h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-600"
+                              menuClassName="border-slate-200"
+                            />
                           ) : null}
                         </div>
 

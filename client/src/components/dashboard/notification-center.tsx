@@ -160,7 +160,7 @@ export function NotificationCenter({ variant = "light" }: { variant?: "light" | 
         className={
           variant === "dark"
             ? "relative inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-full bg-white/10 px-3 text-white ring-1 ring-white/15 transition hover:bg-white/20"
-            : "relative inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 text-ink-900 transition hover:bg-white/60"
+            : "relative inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 text-ink-900 transition hover:bg-grey/20"
         }
       >
         <Bell className="h-4 w-4" />

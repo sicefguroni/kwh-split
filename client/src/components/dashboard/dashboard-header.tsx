@@ -8,10 +8,6 @@ interface DashboardHeaderProps {
   onLogout: () => void;
   isLoggingOut: boolean;
   isOnline: boolean;
-  actionMessage?: { kind: "success" | "error"; text: string } | null;
-  onDismissAction?: () => void;
-  deletedGroupNotification?: string | null;
-  onDismissDeletedNotification?: () => void;
   showHome?: boolean;
 }
 
@@ -19,10 +15,6 @@ export function DashboardHeader({
   onLogout,
   isLoggingOut,
   isOnline,
-  actionMessage,
-  onDismissAction,
-  deletedGroupNotification,
-  onDismissDeletedNotification,
   showHome = true,
 }: DashboardHeaderProps) {
   const navigate = useNavigate();
@@ -34,20 +26,6 @@ export function DashboardHeader({
         {/* Left: Logo + Home */}
         <div className="flex items-center gap-3">
           <Logo size="sm" className="h-6 md:h-7 lg:h-8" />
-          {deletedGroupNotification ? (
-            <div className="inline-flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1.5 text-sm font-semibold text-rose-700">
-              <span>{deletedGroupNotification}</span>
-              <button
-                type="button"
-                onClick={onDismissDeletedNotification}
-                disabled={!onDismissDeletedNotification}
-                className="text-rose-700/80 transition hover:text-rose-900"
-                aria-label="Dismiss delete notification"
-              >
-                ×
-              </button>
-            </div>
-          ) : null}
         </div>
 
         {showHome ? (
@@ -99,27 +77,6 @@ export function DashboardHeader({
           </Button>
         </div>
       </div>
-
-      {actionMessage ? (
-        <div
-          className={`mx-auto flex max-w-3xl items-center justify-between gap-3 border-t px-4 py-3 text-sm sm:px-6 ${
-            actionMessage.kind === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-red-200 bg-red-50 text-red-800"
-          }`}
-          role="status"
-        >
-          <span>{actionMessage.text}</span>
-          <button
-            type="button"
-            className="font-semibold uppercase tracking-wide opacity-80 transition hover:opacity-100"
-            onClick={onDismissAction}
-            disabled={!onDismissAction}
-          >
-            Dismiss
-          </button>
-        </div>
-      ) : null}
     </header>
   );
 }

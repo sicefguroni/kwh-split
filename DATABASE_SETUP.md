@@ -51,7 +51,16 @@ Or in psql:
 \i schema.sql
 ```
 
-### Step 4: Load Sample Data (Optional)
+### Step 4: Apply Migrations
+
+The checked-in schema is only the base snapshot. Run the migration runner so later
+auth and profile columns are present in your local database:
+
+```bash
+pnpm db:migrate
+```
+
+### Step 5: Load Sample Data (Optional)
 
 To populate the database with sample data:
 
@@ -75,6 +84,9 @@ Stores user account information
 - `is_active` - Account status
 - `avatar_url` - Optional profile image URL
 - `email_verified` - Optional email verification status from provider
+- `profile_image_url` - Optional uploaded profile image URL
+- `bank_qr_url` - Optional bank or wallet QR image URL
+- `discount_type` - Discount category (`none`, `pwd`, `senior`)
 - `created_at`, `updated_at` - Timestamps
 
 ### User Auth Providers Table
