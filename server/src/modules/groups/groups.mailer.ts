@@ -17,10 +17,12 @@ const getTransporter = (): Transporter | null => {
     return cachedTransporter;
   }
 
+  const port = env.SMTP_PORT!;
   cachedTransporter = nodemailer.createTransport({
     host: env.SMTP_HOST,
-    port: env.SMTP_PORT,
-    secure: env.SMTP_PORT === 465,
+    port,
+    secure: port === 465,
+    requireTLS: port === 587,
     ...(env.SMTP_USER
       ? {
         auth: {
