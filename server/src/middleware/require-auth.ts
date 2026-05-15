@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { isUserSessionActive } from "../lib/auth-session-redis.js";
 import { ACCESS_COOKIE } from "../utils/cookies.js";
 import { verifyAccessToken } from "../utils/jwt.js";
 import { unauthorized } from "../utils/errors.js";
@@ -14,6 +15,9 @@ export async function requireAuth(
       throw unauthorized();
     }
     const claims = await verifyAccessToken(token);
+    if (!(await isUserSessionActive(claims.sub))) {
+      throw unauthorized();
+    }
     req.userId = claims.sub;
     next();
   } catch {
