@@ -263,29 +263,20 @@ export default function DashboardPage() {
       <div className="relative overflow-hidden pt-4 text-white lg:pt-8">
         <div className="pointer-events-none absolute inset-0 opacity-40" />
         <div className="relative mx-auto w-full max-w-3xl space-y-10">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-12">
+          <div className="flex flex-col gap-6">
             <h1 className="mt-3 mx-4 text-xl font-semibold tracking-tight text-ink-900 lg:text-3xl">
               Hello, {getFirstName(user?.name)}
             </h1>
 
-            <div className="lg:mx-4 flex w-full max-w-sm flex-col gap-3 lg:shrink-0 lg:items-end">
-              <div className="w-full rounded-3xl border border-gray-200 px-5 py-4 text-left sm:text-right">
+            <div className="mx-4 flex w-full max-w-sm flex-col gap-3">
+              <div className="w-full rounded-3xl border border-gray-200 px-5 py-4 text-left sm:text-left">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.35em] text-ink-900">
                   Your net across groups
                 </p>
                 <p className="mt-2 text-3xl font-semibold tabular-nums text-ink-900">
-                  ₱{formatMoney(totalBalance)}
+                  ₱ {formatMoney(totalBalance)}
                 </p>
               </div>
-              <Button
-                size="md"
-                aria-label="Add Group"
-                className="fixed bottom-4 right-4 z-30 h-14 w-14 rounded-full bg-ink-900 p-0 font-semibold text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition hover:bg-ink-800 sm:static sm:h-11 sm:w-auto sm:px-6 sm:py-3 sm:shadow-lg"
-                onClick={handleOpenCreateGroup}
-              >
-                <Plus className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" />
-                <span className="sr-only sm:not-sr-only">Add Group</span>
-              </Button>
             </div>
           </div>
         </div>
@@ -293,7 +284,18 @@ export default function DashboardPage() {
 
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 pt-6 sm:px-6 sm:py-10">
         <section className="flex flex-col gap-4">
-          <h2 className="text-base text-ink-900 lg:text-lg">Your groups</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base text-ink-900 lg:text-lg">Your groups</h2>
+            <Button
+              size="md"
+              aria-label="Add Group"
+              className="fixed bottom-4 right-4 z-30 h-14 w-14 rounded-full bg-ink-900 p-0 font-semibold text-white shadow-[0_18px_40px_rgba(15,23,42,0.28)] transition hover:bg-ink-800 sm:static sm:h-9 sm:w-50 sm:px-4 sm:py-2 sm:shadow-lg"
+              onClick={handleOpenCreateGroup}
+            >
+              <Plus className="h-5 w-5 sm:mr-2 sm:h-4 sm:w-4" />
+              <span className="sr-only sm:not-sr-only">Add Group</span>
+            </Button>
+          </div>
 
           <section aria-labelledby="groups-heading" className="flex flex-col gap-4">
             {groupsWithBalance.length === 0 ? (
