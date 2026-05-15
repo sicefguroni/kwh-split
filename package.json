@@ -9,7 +9,8 @@
     "start": "pnpm -r --parallel --stream run start",
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
-    "db:migrate": "pnpm --filter @split/server run db:migrate"
+    "db:migrate": "pnpm --filter @split/server run db:migrate",
+    "deploy:site": "bash infra/scripts/deploy-site.sh"
   },
   "engines": {
     "node": ">=20"
