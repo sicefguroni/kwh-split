@@ -37,7 +37,7 @@ export function GroupCard({
   const isPositive = balance >= 0;
   const balanceText = isPositive ? "group owes you" : "you owe";
   const absBalance = Math.abs(balance);
-  const formattedBalance = `${currency}${absBalance.toLocaleString(undefined, {
+  const formattedBalance = `${currency} ${absBalance.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

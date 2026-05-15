@@ -260,10 +260,10 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
             </h1>
             <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <div className="text-4xl sm:text-5xl font-bold tracking-tight">
-                {expense.currency}{expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                {expense.currency} {expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div className="text-lg text-primary-foreground/80">
-                {isFullySettled ? "Fully settled" : `${expense.currency}${expense.splits.filter((s) => s.memberId !== expense.paidBy && !s.isSettled).reduce((sum, s) => sum + s.amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unsettled`}
+                {isFullySettled ? "Fully settled" : `${expense.currency} ${expense.splits.filter((s) => s.memberId !== expense.paidBy && !s.isSettled).reduce((sum, s) => sum + s.amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unsettled`}
               </div>
             </div>
           </section>
@@ -329,7 +329,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
                 >
                   <span className="text-sm text-ink-900 truncate mr-3">{item.itemName}</span>
                   <span className="text-sm font-semibold text-ink-900 flex-shrink-0">
-                    {expense.currency}{item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {expense.currency} {item.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </li>
               ))}
@@ -373,8 +373,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
                   {/* Right: amount + badge/button */}
                   <div className="flex items-center gap-3 flex-shrink-0">
                     <span className="text-sm font-bold text-ink-900">
-                      {expense.currency}
-                      {split.amount.toLocaleString(undefined, {
+                      {expense.currency} {split.amount.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -442,7 +441,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slat
                       </p>
                     </div>
                     <p className="text-sm font-bold text-emerald-700">
-                      {expense.currency}{" "}
+                      {expense.currency} ${" "}
                       {entry.amountPaid.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
