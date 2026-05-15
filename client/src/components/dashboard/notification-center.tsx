@@ -126,7 +126,6 @@ export function NotificationCenter({ variant = "light" }: { variant?: "light" | 
     try {
       setError("");
       const group = await acceptMutation.mutateAsync({ invitationId });
-      // Don't close the panel immediately to show the updated status
       navigate(`/group/${group.id}`);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Unable to accept the invite.");
@@ -137,7 +136,6 @@ export function NotificationCenter({ variant = "light" }: { variant?: "light" | 
     try {
       setError("");
       await declineMutation.mutateAsync({ invitationId });
-      // Don't close the panel to show the updated status
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Unable to decline the invite.");
     }
@@ -161,11 +159,12 @@ export function NotificationCenter({ variant = "light" }: { variant?: "light" | 
         onClick={() => setIsOpen((current) => !current)}
         className={
           variant === "dark"
-            ? "relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white ring-1 ring-white/15 transition hover:bg-white/20"
-            : "relative inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full text-ink-900 transition hover:bg-white/60"
+            ? "relative inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-full bg-white/10 px-3 text-white ring-1 ring-white/15 transition hover:bg-white/20"
+            : "relative inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded-full px-3 text-ink-900 transition hover:bg-white/60"
         }
       >
         <Bell className="h-4 w-4" />
+        <span className="hidden sm:inline text-sm font-medium">Notifications</span>
         {badgeCount > 0 ? (
           <span className="absolute -right-0.5 -top-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
             {badgeCount}
