@@ -33,8 +33,19 @@ interface GroupFormModalProps extends AddGroupModalProps {
   mode: "create" | "edit";
 }
 
-const COMMON_CURRENCIES = ["₱", "USD", "EUR", "SGD"];
-const CURRENCY_OPTIONS = COMMON_CURRENCIES.map((option) => ({ label: option, value: option }));
+const CURRENCY_OPTIONS = [
+  { label: "Philippine Peso (₱)", value: "₱" },
+  { label: "US Dollar (USD)", value: "USD" },
+  { label: "Australian Dollar (AUD)", value: "AUD" },
+  { label: "Canadian Dollar (CAD)", value: "CAD" },
+  { label: "Chinese Yuan Renminbi (CNY)", value: "CNY" },
+  { label: "Euro (€)", value: "€" },
+  { label: "Hong Kong Dollar (HKD)", value: "HKD" },
+  { label: "Japanese Yen (JPY)", value: "JPY" },
+  { label: "Singapore Dollar (SGD)", value: "SGD" },
+  { label: "UAE Dirham (AED)", value: "AED" },
+  { label: "UK British Pound (£)", value: "£" },
+];
 const MAX_GROUP_IMAGE_SIZE_BYTES = 1024 * 1024;
 
 const fileToDataUrl = (file: File): Promise<string> =>
