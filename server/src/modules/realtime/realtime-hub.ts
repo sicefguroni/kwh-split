@@ -1,10 +1,12 @@
 import type { IncomingMessage, Server as HttpServer } from "node:http";
+import { Redis } from "ioredis";
 import WebSocket, { WebSocketServer } from "ws";
 import { pool } from "../../db/pool.js";
 import { parseSubjectUserId } from "../common/authorization.js";
 import { ACCESS_COOKIE } from "../../utils/cookies.js";
 import { unauthorized } from "../../utils/errors.js";
 import { verifyAccessToken } from "../../utils/jwt.js";
+import { getRedis } from "../../lib/redis.js";
 
 interface RealtimeConnectionState {
   userId: number;
@@ -21,10 +23,13 @@ interface InvitationChangeMessage {
 }
 
 const REALTIME_PATH = "/api/realtime";
+const REALTIME_REDIS_CHANNEL = "split:realtime:events";
 
 let realtimeServer: WebSocketServer | null = null;
 let attachedServer: HttpServer | null = null;
-let upgradeListener: ((request: IncomingMessage, socket: import("node:net").Socket, head: Buffer) => void) | null = null;
+let upgradeListener: ((request: IncomingMessage, socket: import("node:net").Socket, head: Buffer) => void) | null =
+  null;
+let redisSubscriber: Redis | null = null;
 
 const connections = new Map<WebSocket, RealtimeConnectionState>();
 
@@ -82,6 +87,66 @@ const serializeInvitationChange = (): string =>
     type: "invitation-changed",
   } satisfies InvitationChangeMessage);
 
+function localBroadcastGroupChange(groupId: number): void {
+  if (!realtimeServer) {
+    return;
+  }
+
+  const serialized = serializeGroupChange(groupId);
+  for (const [socket, state] of connections) {
+    if (socket.readyState !== WebSocket.OPEN) {
+      continue;
+    }
+    if (!state.groupIds.has(groupId)) {
+      continue;
+    }
+    socket.send(serialized);
+  }
+}
+
+function localBroadcastInvitationChange(userId: number): void {
+  if (!realtimeServer) {
+    return;
+  }
+
+  const serialized = serializeInvitationChange();
+  for (const [socket, state] of connections) {
+    if (socket.readyState !== WebSocket.OPEN) {
+      continue;
+    }
+    if (state.userId !== userId) {
+      continue;
+    }
+    socket.send(serialized);
+  }
+}
+
+async function startRealtimeRedisSubscriber(): Promise<void> {
+  const primary = getRedis();
+  if (!primary) {
+    return;
+  }
+
+  const sub = primary.duplicate();
+  await sub.subscribe(REALTIME_REDIS_CHANNEL);
+  redisSubscriber = sub;
+
+  sub.on("message", (_channel: string, message: string) => {
+    try {
+      const data = JSON.parse(message) as { kind?: string; groupId?: number; userId?: number };
+      if (data.kind === "group" && typeof data.groupId === "number") {
+        localBroadcastGroupChange(data.groupId);
+        return;
+      }
+      if (data.kind === "invitation" && typeof data.userId === "number") {
+        localBroadcastInvitationChange(data.userId);
+      }
+    } catch {
+      // Ignore malformed fan-out payloads.
+    }
+  });
+}
+
 async function handleUpgrade(request: IncomingMessage, socket: import("node:net").Socket, head: Buffer): Promise<void> {
   try {
     if ((request.url ?? "").split("?")[0] !== REALTIME_PATH) {
@@ -94,7 +159,8 @@ async function handleUpgrade(request: IncomingMessage, socket: import("node:net"
       connections.set(webSocket, { userId, groupIds: new Set() });
       realtimeServer?.emit("connection", webSocket, request);
     });
-  } catch {
+  } catch (error) {
+    console.warn("[realtime] WebSocket upgrade rejected", error);
     socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
   }
 }
@@ -111,6 +177,10 @@ export function attachRealtimeServer(server: HttpServer): void {
     void handleUpgrade(request, socket, head);
   };
   server.on("upgrade", upgradeListener);
+
+  void startRealtimeRedisSubscriber().catch((error) => {
+    console.error("[realtime] Redis subscriber failed to start", error);
+  });
 
   realtimeServer.on("connection", (socket: WebSocket) => {
     const state = connections.get(socket);
@@ -141,40 +211,33 @@ export function attachRealtimeServer(server: HttpServer): void {
 }
 
 export function broadcastGroupChange(groupId: number): void {
-  if (!realtimeServer) {
-    return;
+  const redis = getRedis();
+  if (redis) {
+    void redis.publish(
+      REALTIME_REDIS_CHANNEL,
+      JSON.stringify({ kind: "group", groupId }),
+    );
   }
-
-  const serialized = serializeGroupChange(groupId);
-  for (const [socket, state] of connections) {
-    if (socket.readyState !== WebSocket.OPEN) {
-      continue;
-    }
-    if (!state.groupIds.has(groupId)) {
-      continue;
-    }
-    socket.send(serialized);
-  }
+  localBroadcastGroupChange(groupId);
 }
 
 export function broadcastInvitationChange(userId: number): void {
-  if (!realtimeServer) {
-    return;
+  const redis = getRedis();
+  if (redis) {
+    void redis.publish(
+      REALTIME_REDIS_CHANNEL,
+      JSON.stringify({ kind: "invitation", userId }),
+    );
   }
-
-  const serialized = serializeInvitationChange();
-  for (const [socket, state] of connections) {
-    if (socket.readyState !== WebSocket.OPEN) {
-      continue;
-    }
-    if (state.userId !== userId) {
-      continue;
-    }
-    socket.send(serialized);
-  }
+  localBroadcastInvitationChange(userId);
 }
 
 export function shutdownRealtimeServer(): void {
+  if (redisSubscriber) {
+    void redisSubscriber.quit().catch(() => undefined);
+    redisSubscriber = null;
+  }
+
   if (attachedServer && upgradeListener) {
     attachedServer.off("upgrade", upgradeListener);
   }
