@@ -34,7 +34,7 @@ export function BankAccountsSection() {
           <button
             type="button"
             onClick={() => setIsAdding(true)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700"
+            className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-slate-700 px-4 py-2 rounded-full"
           >
             <Plus className="h-3.5 w-3.5" /> Add
           </button>

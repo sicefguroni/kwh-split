@@ -351,7 +351,7 @@ function GroupFormModal({
               description={
                 isEditing
                   ? "Send one or many invites by email, or choose someone you already collaborated with."
-                  : "Add emails in bulk, or search your past collaborators before the group is created."
+                  : "Add emails in bulk, or search your past collaborators."
               }
             />
           </div>

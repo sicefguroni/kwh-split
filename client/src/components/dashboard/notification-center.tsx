@@ -182,9 +182,6 @@ export function NotificationCenter({ variant = "light" }: { variant?: "light" | 
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Live invites and activity from your collaborators.
-                </p>
               </div>
               <button
                 type="button"
@@ -209,9 +206,6 @@ export function NotificationCenter({ variant = "light" }: { variant?: "light" | 
                       <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Invitations
                       </h4>
-                      <p className="mt-1 text-xs text-slate-400">
-                        All invitation activity and status updates.
-                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       {visibleInvitations.length > 0 && (
@@ -316,9 +310,6 @@ export function NotificationCenter({ variant = "light" }: { variant?: "light" | 
                       <h4 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                         Activity
                       </h4>
-                      <p className="mt-1 text-xs text-slate-400">
-                        Realtime updates on group activity — members, expenses, and settlements.
-                      </p>
                     </div>
                     <div className="flex items-center gap-2">
                       {visibleNotifications.length > 0 && (

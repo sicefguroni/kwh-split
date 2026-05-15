@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { BankAccountsSection } from "@/components/bank-accounts/bank-accounts-section";
@@ -274,22 +275,25 @@ export default function ProfilePage() {
           <p className="text-sm text-ink-600 mb-4">
             Set your PWD or Senior Citizen discount status. This will be visible to all your groups.
           </p>
-          <select
+          <Select
             value={user?.discountType ?? "none"}
-            onChange={async (e) => {
+            onValueChange={async (value) => {
               try {
-                await updateProfile({ discountType: e.target.value });
+                await updateProfile({ discountType: value });
               } catch {
                 // silent
               }
             }}
-            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
-            aria-label="Discount status"
-          >
-            <option value="none">None</option>
-            <option value="pwd">PWD</option>
-            <option value="senior">Senior Citizen</option>
-          </select>
+            options={[
+              { label: "None", value: "none" },
+              { label: "PWD", value: "pwd" },
+              { label: "Senior Citizen", value: "senior" },
+            ]}
+            ariaLabel="Discount status"
+            placeholder="None"
+            triggerClassName="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700"
+            menuClassName="border-slate-200"
+          />
         </Card>
 
         {/* Sign Out */}
