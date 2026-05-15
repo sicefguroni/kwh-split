@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "@/features/auth/use-auth";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
+import { ensureSessionRefreshed } from "@/lib/session-refresh";
 
 interface RealtimeGroupChangeMessage {
   type: "group-changed";
@@ -48,7 +49,12 @@ export function RealtimeUpdatesBridge() {
       void queryClient.invalidateQueries({ queryKey: ["groups"] });
     };
 
-    const connect = () => {
+    const connect = async () => {
+      if (closed || !isOnline) {
+        return;
+      }
+
+      await ensureSessionRefreshed();
       if (closed || !isOnline) {
         return;
       }
@@ -85,12 +91,14 @@ export function RealtimeUpdatesBridge() {
         if (closed || !isOnline) {
           return;
         }
-        retryTimer = window.setTimeout(connect, retryDelay);
+        retryTimer = window.setTimeout(() => {
+          void connect();
+        }, retryDelay);
         retryDelay = Math.min(retryDelay * 2, 30_000);
       };
     };
 
-    connect();
+    void connect();
 
     return () => {
       closed = true;

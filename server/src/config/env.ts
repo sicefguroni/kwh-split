@@ -17,23 +17,46 @@ const EnvSchema = z.object({
     .default("false")
     .transform((value) => value.toLowerCase() === "true"),
 
-  DATABASE_URL: z.string().url().optional(),
+  /** Not `z.string().url()` — passwords often contain `@` / `[]` / etc.; encode those or use DATABASE_* fields instead. */
+  DATABASE_URL: z
+    .preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z.string().min(1).optional(),
+    ),
   DATABASE_HOST: z.string().default("localhost"),
   DATABASE_PORT: z.coerce.number().int().positive().default(5432),
   DATABASE_USER: z.string().default("split"),
   DATABASE_PASSWORD: z.string().default("split"),
   DATABASE_NAME: z.string().default("split_dev"),
+  /** Set true for AWS RDS (or when host is *.rds.amazonaws.com). Local Postgres: leave unset/false. */
+  DATABASE_SSL: z
+    .string()
+    .default("false")
+    .transform((value) => value.toLowerCase() === "true"),
 
   /** When an offline sync INSERT omits `group_id`, use this group (user must be a member). */
   OFFLINE_SYNC_DEFAULT_GROUP_ID: z.coerce.number().int().positive().optional(),
 
-  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
-  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-  SMTP_HOST: z.string().min(1).optional(),
+  GOOGLE_CLIENT_ID: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
+  GOOGLE_CLIENT_SECRET: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
+  SMTP_HOST: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
   SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().min(1).optional(),
+  SMTP_USER: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().optional()),
+  SMTP_PASS: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().optional()),
+  SMTP_FROM: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
+
+  /** TabScanner receipt OCR — https://tabscanner.com */
+  OCR_API_KEY: z
+    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
+
+  /** ElastiCache / local Redis — enables cluster rate limits, realtime fan-out, server-side session marker. */
+  REDIS_URL: z.string().url().optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);

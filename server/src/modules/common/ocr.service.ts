@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
 import sharp from "sharp";
+import { env } from "../../config/env.js";
 
 export interface ExtractedItem {
   name: string;
@@ -31,7 +32,7 @@ export class OCRService {
 
   constructor(logger?: Logger) {
     this.logger = logger;
-    this.apiKey = process.env.OCR_API_KEY ?? "";
+    this.apiKey = env.OCR_API_KEY ?? "";
   }
 
   async initialize(): Promise<void> {

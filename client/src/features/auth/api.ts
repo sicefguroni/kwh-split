@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api-client";
+import { ensureSessionRefreshed } from "@/lib/session-refresh";
 import type { AuthResponse, AuthUser } from "./types";
 import type { LoginFormValues, SignupFormValues } from "./schemas";
 
@@ -25,6 +26,8 @@ export const authApi = {
     }),
 
   logout: () => apiClient.post<void>("/api/auth/logout"),
+
+  refreshSession: () => ensureSessionRefreshed(),
 
   me: (signal?: AbortSignal) =>
     apiClient.get<{ user: AuthUser }>(

@@ -1,6 +1,6 @@
 import { hashPassword, verifyPassword } from "../../utils/password.js";
-import { signAccessToken, signRefreshToken } from "../../utils/jwt.js";
-import { badRequest, conflict, unauthorized } from "../../utils/errors.js";
+import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../../utils/jwt.js";
+import { badRequest, conflict, HttpError, unauthorized } from "../../utils/errors.js";
 import {
   userRepository,
   type AuthProvider,
@@ -10,6 +10,7 @@ import type { LoginInput, SignupInput } from "./auth.schemas.js";
 import { createRemoteJWKSet, jwtVerify, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
+import { markUserSessionActive } from "../../lib/auth-session-redis.js";
 
 export interface PublicUser {
   id: string;
@@ -54,10 +55,14 @@ const toPublicUser = (record: UserRecord): PublicUser => ({
 
 const issueTokens = async (
   userId: string,
-): Promise<{ accessToken: string; refreshToken: string }> => ({
-  accessToken: await signAccessToken(userId),
-  refreshToken: await signRefreshToken(userId),
-});
+): Promise<{ accessToken: string; refreshToken: string }> => {
+  const tokens = {
+    accessToken: await signAccessToken(userId),
+    refreshToken: await signRefreshToken(userId),
+  };
+  await markUserSessionActive(userId);
+  return tokens;
+};
 
 const parseUserId = (subject: string): number => {
   const parsed = Number.parseInt(subject, 10);
@@ -323,6 +328,22 @@ export const authService = {
       base.searchParams.set("redirect", input.redirectPath);
     }
     return base.toString();
+  },
+
+  async refreshFromRefreshCookie(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
+    try {
+      const claims = await verifyRefreshToken(refreshToken);
+      const user = await userRepository.findById(parseUserId(claims.sub));
+      if (!user || !user.is_active) {
+        throw unauthorized("Session user no longer exists");
+      }
+      return issueTokens(String(user.user_id));
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 401) {
+        throw error;
+      }
+      throw unauthorized("Invalid or expired session");
+    }
   },
 
   async updateProfile(userId: string, input: {
