@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
-import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { pool } from "./db/pool.js";
+import { initRedis, shutdownRedis } from "./lib/redis.js";
 import { attachRealtimeServer, shutdownRealtimeServer } from "./modules/realtime/realtime-hub.js";
 
 async function start() {
@@ -12,6 +12,8 @@ async function start() {
     process.exit(1);
   }
 
+  await initRedis();
+  const { createApp } = await import("./app.js");
   const app = createApp();
   const server = createServer(app);
   attachRealtimeServer(server);
@@ -22,6 +24,7 @@ async function start() {
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`[api] received ${signal}, shutting down...`);
     shutdownRealtimeServer();
+    await shutdownRedis().catch(() => undefined);
     server.close(() => {
       pool
         .end()
