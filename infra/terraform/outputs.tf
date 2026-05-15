@@ -9,8 +9,18 @@ output "api_health_url" {
 }
 
 output "site_url" {
-  value       = var.enable_public_site ? "https://${aws_cloudfront_distribution.site[0].domain_name}" : null
+  value       = local.public_site_url
   description = "Public SPA URL (after deploy:site uploads client/dist)"
+}
+
+output "site_domain" {
+  value       = local.use_custom_domain ? local.site_domain_name : null
+  description = "Custom domain hostname when configured"
+}
+
+output "cloudfront_domain_name" {
+  value       = var.enable_public_site ? aws_cloudfront_distribution.site[0].domain_name : null
+  description = "Default *.cloudfront.net hostname (always available when public site is enabled)"
 }
 
 output "site_bucket" {

@@ -5,170 +5,34 @@ import { userRepository } from "../auth/auth.repository.js";
 import { hashPassword } from "../../utils/password.js";
 import { displayName } from "../../utils/display-name.js";
 import { badRequest, tooManyRequests } from "../../utils/errors.js";
-import { sendGroupInvitationEmail, type GroupInviteDeliveryStatus } from "./groups.mailer.js";
+import { sendGroupInvitationEmail } from "./groups.mailer.js";
 import {
   groupsRepository,
   type GroupInvitationWithContextRecord,
-  type GroupNotificationRecord,
 } from "./groups.repository.js";
+import type { CreateGroupInput, CreateInvitationsInput, JoinGroupInput, UpdateGroupInput } from "./groups.schemas.js";
 import type {
-  CreateGroupInput,
-  CreateInvitationsInput,
-  JoinGroupInput,
-  UpdateGroupInput,
-} from "./groups.schemas.js";
-
-const INVITE_WINDOW_MS = 60 * 60 * 1000;
-const MAX_INVITES_PER_WINDOW = 25;
-const INVITATION_EXPIRY_DAYS = 7;
-
-export interface PublicGroupInvitation {
-  id: string;
-  groupId: string;
-  groupName: string;
-  groupDescription: string | null;
-  groupCurrency: string;
-  groupImageUrl: string | null;
-  memberCount: number;
-  inviterName: string;
-  inviteeEmail: string;
-  inviteeName: string | null;
-  inviteToken: string;
-  status: "pending" | "accepted" | "declined" | "expired";
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface PublicInvitationBatchResult {
-  created: Array<
-    PublicGroupInvitation & {
-      deliveryStatus: GroupInviteDeliveryStatus;
-    }
-  >;
-  skipped: Array<{
-    identifier: string;
-    reason: string;
-  }>;
-}
-
-export interface PublicInvitePreview {
-  kind: "direct" | "public";
-  token: string;
-  inviterName: string | null;
-  inviteeEmail: string | null;
-  status: "pending" | "accepted" | "declined" | "expired" | "available";
-  expiresAt: string | null;
-  group: {
-    id: string;
-    name: string;
-    description: string | null;
-    currency: string;
-    imageUrl: string | null;
-    memberCount: number;
-  };
-}
-
-export interface PublicCollaboratorSuggestion {
-  userId: string;
-  name: string;
-  email: string;
-  mutualGroups: number;
-}
-
-export interface PublicGroup {
-  id: string;
-  name: string;
-  description: string | null;
-  currency: string;
-  imageUrl: string | null;
-  memberCount: number;
-  role: string;
-  members: Array<{ id: string; name: string; email: string; isAdmin: boolean; isActive: boolean; discountType: string }>;
-  createdAt: string;
-  inviteToken: string;
-}
-
-export interface PublicNotification {
-  id: string;
-  type: "group_invitation_accepted" | "group_invitation_declined" | "group_deleted" | "member_left" | "admin_transferred" | "member_joined" | "expense_added" | "expense_deleted" | "settlement_paid";
-  title: string;
-  message: string;
-  isRead: boolean;
-  createdAt: string;
-  groupId: string | null;
-  invitationId: string | null;
-}
-
-const toPublicGroup = (
-  record: {
-    group_id: number;
-    name: string;
-    description: string | null;
-    currency: string;
-    image_url: string | null;
-    invite_token: string | null;
-    created_at: Date;
-  } & { role: string },
-  memberCount: number,
-): PublicGroup => ({
-  id: String(record.group_id),
-  name: record.name,
-  description: record.description,
-  currency: record.currency,
-  imageUrl: record.image_url,
-  memberCount,
-  role: record.role,
-  members: [],
-  createdAt: record.created_at.toISOString(),
-  inviteToken: record.invite_token ?? "",
-});
-
-const toPublicInvitation = (
-  invitation: GroupInvitationWithContextRecord,
-): PublicGroupInvitation => ({
-  id: String(invitation.invitation_id),
-  groupId: String(invitation.group_id),
-  groupName: invitation.group_name,
-  groupDescription: invitation.group_description,
-  groupCurrency: invitation.group_currency,
-  groupImageUrl: invitation.group_image_url,
-  memberCount: invitation.member_count,
-  inviterName: invitation.inviter_name,
-  inviteeEmail: invitation.invitee_email,
-  inviteeName: invitation.invitee_name,
-  inviteToken: invitation.invite_token,
-  status: invitation.status,
-  createdAt: invitation.created_at.toISOString(),
-  expiresAt: invitation.expires_at.toISOString(),
-});
-
-const toPublicNotification = (notification: GroupNotificationRecord): PublicNotification => ({
-  id: String(notification.notification_id),
-  type: notification.type,
-  title: notification.title,
-  message: notification.message,
-  isRead: notification.is_read,
-  createdAt: notification.created_at.toISOString(),
-  groupId: notification.group_id !== null ? String(notification.group_id) : null,
-  invitationId: notification.invitation_id !== null ? String(notification.invitation_id) : null,
-});
-
-const isInvitationExpired = (invitation: { status: string; expires_at: Date }): boolean =>
-  invitation.status === "pending" && invitation.expires_at.getTime() < Date.now();
-
-async function markExpiredIfNeeded(
-  invitation: GroupInvitationWithContextRecord,
-): Promise<GroupInvitationWithContextRecord> {
-  if (!isInvitationExpired(invitation)) {
-    return invitation;
-  }
-
-  await groupsRepository.updateInvitationStatus(invitation.invitation_id, "expired");
-  return {
-    ...invitation,
-    status: "expired",
-  };
-}
+  PublicCollaboratorSuggestion,
+  PublicGroup,
+  PublicGroupInvitation,
+  PublicInvitationBatchResult,
+  PublicInvitePreview,
+  PublicNotification,
+} from "./groups.public-types.js";
+import {
+  createInvitationToken,
+  invitationExpiresAt,
+  INVITE_WINDOW_MS,
+  MAX_INVITES_PER_WINDOW,
+  normalizeEmail,
+} from "./groups.invitation-constants.js";
+import {
+  markExpiredIfNeeded,
+  membersToPublicRoles,
+  toPublicGroup,
+  toPublicInvitation,
+  toPublicNotification,
+} from "./groups.public-mapping.js";
 
 async function requireActiveUser(userId: number): Promise<{ user_id: number; email: string; name: string }> {
   const user = await userRepository.findById(userId);
@@ -193,29 +57,8 @@ async function buildPublicGroup(groupId: number, userId: number): Promise<Public
   const publicGroup = toPublicGroup(group, activeCount);
   return {
     ...publicGroup,
-    members: allMembers.map((member) => ({
-      id: String(member.user_id),
-      name: member.name,
-      email: member.email,
-      isAdmin: member.role === "admin",
-      isActive: member.is_active,
-      discountType: member.discount_type ?? "none",
-    })),
+    members: membersToPublicRoles(allMembers),
   };
-}
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-function createInvitationToken(): string {
-  return `inv_${Date.now()}_${randomUUID().replaceAll("-", "")}`;
-}
-
-function invitationExpiresAt(): Date {
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + INVITATION_EXPIRY_DAYS);
-  return expiresAt;
 }
 
 export const groupsService = {
@@ -241,14 +84,7 @@ export const groupsService = {
         const publicGroup = toPublicGroup(group, activeCount);
         return {
           ...publicGroup,
-          members: allMembers.map((member) => ({
-            id: String(member.user_id),
-            name: member.name,
-            email: member.email,
-            isAdmin: member.role === "admin",
-            isActive: member.is_active,
-            discountType: member.discount_type ?? "none",
-          })),
+          members: membersToPublicRoles(allMembers),
         };
       }),
     );

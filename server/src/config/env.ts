@@ -80,4 +80,3 @@ export const env = Object.freeze({
   OAUTH_CALLBACK_BASE_URL:
     config.OAUTH_CALLBACK_BASE_URL ?? `http://localhost:${config.PORT}`,
 });
-export type Env = typeof env;

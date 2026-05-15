@@ -10,7 +10,7 @@ import { NotificationCenter } from "@/components/dashboard/notification-center";
 import { GroupCoverBackground } from "@/components/dashboard/group-media";
 import { useToast } from "@/components/ui/toast";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
-import { type GroupData, type GroupExpense } from "@/hooks/use-groups";
+import type { GroupData, GroupExpense } from "@/features/groups/domain";
 import { useCurrentUser } from "@/features/auth/use-auth";
 import {
   useCreateExpenseMutation,
