@@ -33,6 +33,17 @@ coverage
 .eslintcache
 *.tsbuildinfo
 
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+infra/terraform/.build/
+infra/terraform/terraform.tfvars
+infra/terraform/*.auto.tfvars
+
+# Editor (local IDE)
+.cursor/
+
 # Lockfiles (pnpm is canonical for this monorepo)
 package-lock.json
 
