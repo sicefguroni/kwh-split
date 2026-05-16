@@ -6,7 +6,11 @@ locals {
   worker_image = "${aws_ecr_repository.worker.repository_url}:${var.worker_image_tag}"
   redis_url    = "redis://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
   # Public site URL for CORS/cookies/OAuth (custom domain or CloudFront default hostname).
-  web_origin = var.enable_public_site ? local.public_site_url : "http://${aws_lb.main.dns_name}"
+  # web_origin_override lets you point OAuth/CORS at a specific URL (e.g. CloudFront default)
+  # without destroying the custom-domain ACM/SES infrastructure.
+  web_origin = trimspace(var.web_origin_override) != "" ? var.web_origin_override : (
+    var.enable_public_site ? local.public_site_url : "http://${aws_lb.main.dns_name}"
+  )
 
   api_container_environment = concat(
     [
@@ -23,6 +27,7 @@ locals {
       { name = "WEB_ORIGIN", value = local.web_origin },
       { name = "OAUTH_CALLBACK_BASE_URL", value = local.web_origin },
       { name = "COOKIE_SECURE", value = var.enable_public_site ? "true" : "false" },
+      { name = "SES_REGION", value = var.aws_region },
     ],
     trimspace(var.google_client_id) != "" && trimspace(var.google_client_secret) != "" ? [
       { name = "GOOGLE_CLIENT_ID", value = var.google_client_id },
@@ -52,6 +57,7 @@ locals {
     { name = "DATABASE_PASSWORD", value = var.db_password },
     { name = "DATABASE_SSL", value = "true" },
     { name = "REDIS_URL", value = local.redis_url },
+    { name = "SES_REGION", value = var.aws_region },
   ]
 }
 
@@ -125,6 +131,28 @@ resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private.id
 }
+
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${local.name}-vpc-endpoints"
+  description = "VPC Endpoints"
+  vpc_id      = aws_vpc.main.id
+  ingress {
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+}
+
+resource "aws_vpc_endpoint" "ses" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.${var.aws_region}.email"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = aws_subnet.private[*].id
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+}
+
 
 resource "aws_security_group" "alb" {
   name        = "${local.name}-alb"
@@ -298,6 +326,21 @@ resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
 resource "aws_iam_role" "ecs_task" {
   name               = "${local.name}-ecs-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume.json
+}
+
+resource "aws_iam_role_policy" "ecs_task_ses" {
+  name = "${local.name}-ecs-task-ses"
+  role = aws_iam_role.ecs_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
 }
 
 resource "aws_ecs_cluster" "main" {

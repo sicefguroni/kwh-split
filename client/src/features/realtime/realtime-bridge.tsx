@@ -62,8 +62,15 @@ export function RealtimeUpdatesBridge() {
       const nextSocket = new WebSocket(buildRealtimeUrl());
       socket = nextSocket;
 
+      let pingInterval: number | null = null;
+
       nextSocket.onopen = () => {
         retryDelay = 1000;
+        pingInterval = window.setInterval(() => {
+          if (nextSocket.readyState === WebSocket.OPEN) {
+            nextSocket.send(JSON.stringify({ type: "ping" }));
+          }
+        }, 30000);
       };
 
       nextSocket.onmessage = (event) => {
@@ -88,6 +95,9 @@ export function RealtimeUpdatesBridge() {
       };
 
       nextSocket.onclose = () => {
+        if (pingInterval !== null) {
+          window.clearInterval(pingInterval);
+        }
         if (closed || !isOnline) {
           return;
         }

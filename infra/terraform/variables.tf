@@ -148,3 +148,9 @@ variable "site_domain_aliases" {
     error_message = "site_domain_aliases requires site_domain to be set."
   }
 }
+
+variable "web_origin_override" {
+  type        = string
+  description = "Override WEB_ORIGIN / OAUTH_CALLBACK_BASE_URL (e.g. CloudFront default URL when custom domain is broken). Leave empty to derive from site_domain."
+  default     = ""
+}

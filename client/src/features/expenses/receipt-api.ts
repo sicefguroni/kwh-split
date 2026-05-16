@@ -92,7 +92,7 @@ export const receiptApi = {
       "/api/expenses/receipt/preview",
       formData,
     );
-    return response.items.map((item, index) => normalizeReceiptItem(item, index));
+    return (response?.items || []).map((item, index) => normalizeReceiptItem(item, index));
   },
 
   async fileToDataURL(file: File): Promise<string> {

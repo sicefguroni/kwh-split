@@ -1,12 +1,12 @@
 data "archive_file" "weekly_summary_zip" {
   type        = "zip"
-  source_file = "${path.module}/../../server/dist/lambdas/weekly-summary.js"
+  source_file = "${path.module}/../../server/dist/lambdas/weekly-summary.cjs"
   output_path = "${path.module}/.build/weekly-summary.zip"
 }
 
 data "archive_file" "debt_reminders_zip" {
   type        = "zip"
-  source_file = "${path.module}/../../server/dist/lambdas/debt-reminders.js"
+  source_file = "${path.module}/../../server/dist/lambdas/debt-reminders.cjs"
   output_path = "${path.module}/.build/debt-reminders.zip"
 }
 
@@ -53,7 +53,8 @@ locals {
     DATABASE_PASSWORD = var.db_password
     DATABASE_NAME     = aws_rds_cluster.main.database_name
     DATABASE_SSL      = "true"
-    SMTP_FROM     = var.smtp_from
+    DATABASE_URL      = "postgresql://${aws_rds_cluster.main.master_username}:${urlencode(var.db_password)}@${aws_rds_cluster.main.endpoint}:5432/${aws_rds_cluster.main.database_name}"
+    SMTP_FROM         = var.smtp_from
   }
 }
 

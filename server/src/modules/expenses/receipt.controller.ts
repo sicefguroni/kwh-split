@@ -109,6 +109,7 @@ export const receiptController = {
     res: Response,
     next: NextFunction,
   ): Promise<void> {
+    console.log("extractReceiptPreview called");
     try {
       if (!req.file) {
         throw badRequest("No receipt image uploaded", "missing_file");

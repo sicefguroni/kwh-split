@@ -1,6 +1,7 @@
 import { pool } from "../../db/pool.js";
 import type { ReceiptAssignmentInput } from "./receipt.schemas.js";
 import { OCRService } from "../common/ocr.service.js";
+import { logger } from "../../lib/logger.js";
 import { badRequest } from "../../utils/errors.js";
 import type { CalculatedSplit } from "./expenses.calculations.js";
 import { calculateTaxAndTipDistribution } from "./expenses.calculations.js";
@@ -15,7 +16,7 @@ export interface ReceiptItemWithAssignments {
 }
 
 export const receiptService = {
-  ocrService: new OCRService(),
+  ocrService: new OCRService(logger),
 
   async processReceiptImage(expenseId: number, imageBuffer: Buffer): Promise<ReceiptItemWithAssignments[]> {
     const ocrResult = await this.ocrService.extractReceiptItems(imageBuffer);
