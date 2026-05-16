@@ -18,7 +18,7 @@ const getSesClient = (): SESClient | null => {
   }
 
   cachedSesClient = new SESClient({
-    region: process.env.AWS_REGION || "us-east-1",
+    region: env.SES_REGION,
   });
 
   return cachedSesClient;
@@ -46,49 +46,46 @@ export async function sendGroupInvitationEmail(input: {
   ].join("\n");
 
   const htmlBody = `
-  <div style="background-color: #f9fafb; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
-    <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-      <tr>
-        <td style="padding: 40px 32px;">
-          <h1 style="margin: 0 0 16px; font-size: 24px; font-weight: 700; color: #111827; line-height: 32px;">
-            You've been invited!
-          </h1>
-          <p style="margin: 0 0 24px; font-size: 16px; line-height: 24px; color: #4b5563;">
-            Hello! <strong>${escapeHtml(input.inviterName)}</strong> has invited you to join the group 
-            <span style="color: #111827; font-weight: 600;">"${escapeHtml(input.groupName)}"</span> on Split.
-          </p>
-          
-          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 24px;">
-            <tr>
-              <td align="center">
-                <a href="${escapeAttribute(input.inviteUrl)}" 
-                   style="display: inline-block; padding: 14px 32px; background-color: #2563eb; color: #ffffff; font-weight: 600; font-size: 16px; text-decoration: none; border-radius: 8px;">
-                   Accept Invitation
-                </a>
-              </td>
-            </tr>
-          </table>
+  <!DOCTYPE html>
+  <html>
+  <body style="font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif; background-color: #ecf7f4; margin: 0; padding: 40px 0;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 25px rgba(10, 15, 26, 0.05);">
+      <div style="background-color: #0a0f1a; padding: 40px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 800; letter-spacing: -0.02em;">Group Invitation</h1>
+        <p style="color: rgba(255,255,255,0.7); margin-top: 8px; font-size: 16px; font-weight: 500;">KWH Split</p>
+      </div>
+      
+      <div style="padding: 40px;">
+        <p style="font-size: 16px; color: #1c2434; line-height: 1.6;">Hi there!</p>
+        <p style="font-size: 16px; color: #4a5468; line-height: 1.6;">
+          <strong>${escapeHtml(input.inviterName)}</strong> has invited you to join the group 
+          <span style="color: #0a0f1a; font-weight: 700;">"${escapeHtml(input.groupName)}"</span> on Split.
+        </p>
+        
+        <div style="margin: 32px 0; text-align: center;">
+          <a href="${escapeAttribute(input.inviteUrl)}" 
+             style="background-color: #3d9689; color: #ffffff; padding: 16px 40px; border-radius: 12px; text-decoration: none; font-weight: 700; font-size: 16px; display: inline-block; box-shadow: 0 4px 12px rgba(61, 150, 137, 0.2);">
+             Accept Invitation
+          </a>
+        </div>
 
-          <div style="padding: 16px; background-color: #f3f4f6; border-radius: 8px; margin-bottom: 24px;">
-            <p style="margin: 0; font-size: 14px; color: #6b7280; line-height: 20px;">
-              <strong>Note:</strong> If you're new to Split, please create an account first, then return to the invite page to join the group.
-            </p>
-          </div>
+        <div style="padding: 20px; background-color: #f5f7fa; border-radius: 16px; margin-bottom: 24px; border: 1px solid #e6eaf0;">
+          <p style="margin: 0; font-size: 14px; color: #6b778c; line-height: 1.6;">
+            <strong>Note:</strong> If you're new to Split, please create an account first, then return to the invite page to join the group.
+          </p>
+        </div>
 
-          <p style="margin: 0; font-size: 12px; color: #9ca3af; text-align: center;">
-            This invitation will expire on ${escapeHtml(input.expiresAt.toLocaleDateString())} at ${escapeHtml(input.expiresAt.toLocaleTimeString())}.
-          </p>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding: 24px; background-color: #f9fafb; text-align: center; border-top: 1px solid #e5e7eb;">
-          <p style="margin: 0; font-size: 14px; color: #9ca3af;">
-            Sent by Split &bull; Manage your expenses with ease.
-          </p>
-        </td>
-      </tr>
-    </table>
-  </div>
+        <p style="margin: 0; font-size: 12px; color: #9aa3b2; text-align: center;">
+          This invitation will expire on ${escapeHtml(input.expiresAt.toLocaleDateString())} at ${escapeHtml(input.expiresAt.toLocaleTimeString())}.
+        </p>
+      </div>
+
+      <div style="background-color: #f5f7fa; padding: 32px; text-align: center; border-top: 1px solid #e6eaf0;">
+        <p style="font-size: 13px; color: #9aa3b2; margin: 0;">&copy; 2024 Split. Build healthy financial habits together.</p>
+      </div>
+    </div>
+  </body>
+  </html>
 `;
 
   try {

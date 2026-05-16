@@ -1,0 +1,1 @@
+{"errorType":"Error","errorMessage":"unable to get local issuer certificate","trace":["Error: unable to get local issuer certificate","    at /var/task/debt-reminders.js:9:15203","    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)","    at async Runtime.la [as handler] (/var/task/debt-reminders.js:9:30507)"]}

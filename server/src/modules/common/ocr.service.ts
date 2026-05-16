@@ -43,6 +43,7 @@ export class OCRService {
   }
 
   async extractReceiptItems(imageBuffer: Buffer): Promise<OCRResult> {
+    console.log("OCRService.extractReceiptItems called with buffer size:", imageBuffer.length);
     if (!this.apiKey) {
       await this.initialize();
     }
@@ -153,6 +154,7 @@ export class OCRService {
     formData.append("decimalPlaces", "2");
     formData.append("region", "ph");
 
+    console.log("Submitting to TabScanner...");
     const response = await fetch(`${TABSCANNER_BASE}/api/2/process`, {
       method: "POST",
       headers: { apikey: this.apiKey },
@@ -213,8 +215,21 @@ export class OCRService {
         message?: string;
       };
 
+      console.log(`TabScanner poll attempt ${attempt} status: ${data.status}`);
+
       if (data.status === "done" && data.result) {
-        this.logger?.info({ attempt, lineItems: data.result.lineItems?.length ?? 0 }, "TabScanner result received");
+        console.log("TabScanner success! Line items count:", data.result.lineItems?.length ?? 0);
+        this.logger?.info(
+          {
+            attempt,
+            lineItemsCount: data.result.lineItems?.length ?? 0,
+            summaryItemsCount: data.result.summaryItems?.length ?? 0,
+            total: data.result.total,
+            establishment: data.result.establishment,
+          },
+          "TabScanner result received",
+        );
+        this.logger?.debug({ result: data.result }, "Full TabScanner result");
         return data.result;
       }
 
@@ -232,7 +247,7 @@ export class OCRService {
 
   private extractLineItems(result: TabScannerResult): ExtractedItem[] {
     const lineItems = result.lineItems ?? [];
-    return lineItems
+    const extracted = lineItems
       .filter((item) => item.lineTotal > 0 && (item.descClean || item.desc))
       .map((item) => ({
         name: this.cleanItemName(item.descClean || item.desc || ""),
@@ -240,6 +255,15 @@ export class OCRService {
         confidence: this.calculateItemConfidence(item, result),
         rawText: item.desc || "",
       }));
+
+    if (extracted.length === 0 && (result.lineItems?.length ?? 0) > 0) {
+      this.logger?.warn(
+        { rawLineItems: result.lineItems },
+        "Items were found by TabScanner but filtered out by extractLineItems",
+      );
+    }
+
+    return extracted;
   }
 
   /**

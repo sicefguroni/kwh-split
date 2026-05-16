@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/index.ts",
-    "build": "tsc -p tsconfig.json",
+    "build:server": "tsc -p tsconfig.json",
+    "build:lambdas": "esbuild src/lambdas/debt-reminders.ts src/lambdas/weekly-summary.ts --bundle --platform=node --target=node20 --outdir=dist/lambdas --format=cjs --out-extension:.js=.cjs",
+    "build": "pnpm build:server && pnpm build:lambdas",
     "start": "node dist/index.js",
     "start:worker": "node dist/notification-worker.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
