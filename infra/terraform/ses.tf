@@ -42,8 +42,8 @@ resource "aws_route53_record" "ses_mail_from_txt" {
 }
 
 resource "aws_route53_record" "ses_dmarc_txt" {
-  count   = local.use_custom_domain ? 1 : 0
-  zone_id = var.route53_zone_id
+  count           = local.use_custom_domain ? 1 : 0
+  zone_id         = var.route53_zone_id
   name            = "_dmarc.${aws_ses_domain_identity.site[0].domain}"
   type            = "TXT"
   ttl             = 600
