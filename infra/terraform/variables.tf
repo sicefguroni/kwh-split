@@ -120,3 +120,37 @@ variable "smtp_from" {
   description = "From address for outbound mail, e.g. Split <noreply@yourdomain.com>"
   default     = ""
 }
+
+variable "site_domain" {
+  type        = string
+  description = "Custom hostname for the public site (e.g. app.example.com). Leave empty to keep the default *.cloudfront.net URL."
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.site_domain) == "" || trimspace(var.route53_zone_id) != ""
+    error_message = "route53_zone_id must be set when site_domain is set."
+  }
+}
+
+variable "route53_zone_id" {
+  type        = string
+  description = "Route 53 hosted zone ID for ACM DNS validation and alias records to CloudFront. Required when site_domain is set."
+  default     = ""
+}
+
+variable "site_domain_aliases" {
+  type        = list(string)
+  description = "Extra hostnames on the same CloudFront distribution and ACM cert (e.g. www.example.com)."
+  default     = []
+
+  validation {
+    condition     = trimspace(var.site_domain) != "" || length(var.site_domain_aliases) == 0
+    error_message = "site_domain_aliases requires site_domain to be set."
+  }
+}
+
+variable "web_origin_override" {
+  type        = string
+  description = "Override WEB_ORIGIN / OAUTH_CALLBACK_BASE_URL (e.g. CloudFront default URL when custom domain is broken). Leave empty to derive from site_domain."
+  default     = ""
+}

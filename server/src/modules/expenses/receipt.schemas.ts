@@ -35,9 +35,4 @@ export const ReceiptAssignmentInputSchema = z.object({
   assignments: z.array(ItemAssignmentSchema),
 });
 
-export type ReceiptUploadResponse = z.infer<typeof ReceiptUploadResponseSchema>;
-export type ReceiptItemResponse = z.infer<typeof ReceiptItemResponseSchema>;
-export type ReceiptSplit = z.infer<typeof ReceiptSplitSchema>;
-export type ReceiptAssignmentResponse = z.infer<typeof ReceiptAssignmentResponseSchema>;
-export type ItemAssignment = z.infer<typeof ItemAssignmentSchema>;
 export type ReceiptAssignmentInput = z.infer<typeof ReceiptAssignmentInputSchema>;

@@ -18,6 +18,11 @@ worker_image_tag = "migrate"
 # Public SPA on CloudFront (S3 + /api/* → ALB)
 enable_public_site = true
 
+# Custom domain (optional) — requires a Route 53 hosted zone for the domain
+# site_domain       = "app.example.com"
+# route53_zone_id   = "Z0123456789ABCDEFGHIJ"   # Route 53 → Hosted zones → your zone → ID
+# site_domain_aliases = ["www.example.com"]       # optional extra names on the same cert + CDN
+
 # Google Cloud Console → OAuth 2.0 Web client (same app as local server/.env)
 # google_client_id     = ""
 # google_client_secret = ""

@@ -27,3 +27,10 @@ provider "aws" {
   # Explicit profile avoids "IMDS only" when the process does not inherit AWS_PROFILE (some GUIs / wrappers).
   profile = trimspace(var.aws_profile) != "" ? var.aws_profile : null
 }
+
+# ACM for CloudFront custom domains must be issued in us-east-1 (AWS requirement). App stack stays in aws_region.
+provider "aws" {
+  alias   = "us_east_1"
+  region  = "us-east-1"
+  profile = trimspace(var.aws_profile) != "" ? var.aws_profile : null
+}

@@ -1,4 +1,4 @@
-import { type GroupExpense, type GroupMember } from "@/hooks/use-groups";
+import type { GroupExpense, GroupMember } from "@/features/groups/domain";
 
 export type { GroupExpense, GroupMember };
 

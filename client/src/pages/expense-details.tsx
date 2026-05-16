@@ -10,7 +10,7 @@ import { useExpensesQuery, useUpdateExpenseMutation } from "@/features/expenses/
 import { useMarkSettlementPaidMutation, useSettlementHistoryQuery } from "@/features/settlements/use-settlements";
 import { resolveViewerMemberId } from "@/lib/group-money";
 import { useToast } from "@/components/ui/toast";
-import type { GroupExpense, GroupData } from "@/hooks/use-groups";
+import type { GroupData, GroupExpense } from "@/features/groups/domain";
 
 export default function ExpenseDetailsPage() {
   const { groupId, expenseId } = useParams<{ groupId: string; expenseId: string }>();

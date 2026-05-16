@@ -57,6 +57,9 @@ const EnvSchema = z.object({
 
   /** ElastiCache / local Redis — enables cluster rate limits, realtime fan-out, server-side session marker. */
   REDIS_URL: z.string().url().optional(),
+
+  SES_REGION: z.string().default("ap-southeast-1"),
+  AWS_REGION: z.string().default("ap-southeast-1"),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -80,4 +83,3 @@ export const env = Object.freeze({
   OAUTH_CALLBACK_BASE_URL:
     config.OAUTH_CALLBACK_BASE_URL ?? `http://localhost:${config.PORT}`,
 });
-export type Env = typeof env;

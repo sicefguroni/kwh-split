@@ -1,4 +1,4 @@
-import type { GroupData, GroupExpense } from "@/hooks/use-groups";
+import type { GroupData, GroupExpense } from "@/features/groups/domain";
 
 /** Sum of expense amounts (group spending total). */
 export function totalSpent(expenses: GroupExpense[]): number {
