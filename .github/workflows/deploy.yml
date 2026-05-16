@@ -9,12 +9,18 @@ env:
   AWS_REGION: ap-southeast-1
   TF_VAR_environment: dev
   TF_VAR_project: kwh-split
+  # --- Secrets (from GitHub repository settings) ---
   TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
   TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
   TF_VAR_smtp_from: ${{ secrets.TF_VAR_SMTP_FROM }}
   TF_VAR_google_client_id: ${{ secrets.TF_VAR_GOOGLE_CLIENT_ID }}
   TF_VAR_google_client_secret: ${{ secrets.TF_VAR_GOOGLE_CLIENT_SECRET }}
   TF_VAR_ocr_api_key: ${{ secrets.TF_VAR_OCR_API_KEY }}
+  # --- Custom domain (must match local tfvars to prevent CloudFront destroy/recreate) ---
+  TF_VAR_site_domain: kwhsplit.app
+  TF_VAR_site_domain_aliases: '["www.kwhsplit.app"]'
+  TF_VAR_route53_zone_id: Z1029435AJALTOR9P6FP
+  TF_VAR_cloudfront_price_class: PriceClass_All
 
 jobs:
   build-and-deploy:
