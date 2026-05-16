@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authApi, type UpdateProfileInput } from "./api";
-import type { AuthResponse, AuthUser } from "./types";
+import type { AuthResponse, AuthUser, MemberSettlementProfile } from "./types";
 import type { LoginFormValues, SignupFormValues } from "./schemas";
 import { ApiError } from "@/lib/api-client";
 
 const ME_KEY = ["auth", "me"] as const;
+const memberSettlementProfileKey = (groupId: string, userId: string) =>
+  ["auth", "member-settlement-profile", groupId, userId] as const;
 
 export function useCurrentUser() {
   return useQuery<AuthUser | null, ApiError>({
@@ -62,5 +64,21 @@ export function useUpdateProfileMutation() {
     onSuccess: ({ user }) => {
       queryClient.setQueryData<AuthUser>(ME_KEY, user);
     },
+  });
+}
+
+export function useMemberSettlementProfile(
+  groupId: string,
+  userId: string,
+  enabled = true,
+) {
+  return useQuery<MemberSettlementProfile, ApiError>({
+    queryKey: memberSettlementProfileKey(groupId, userId),
+    queryFn: async ({ signal }) => {
+      const { profile } = await authApi.getMemberSettlementProfile(groupId, userId, signal);
+      return profile;
+    },
+    enabled: enabled && groupId.length > 0 && userId.length > 0,
+    staleTime: 60_000,
   });
 }

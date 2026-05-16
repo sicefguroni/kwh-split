@@ -251,7 +251,7 @@ export default function ExpenseDetailsPage() {
       <main className="mx-auto max-w-3xl px-4 sm:px-6 pt-6">
         <div className="relative overflow-hidden rounded-3xl">
           <section
-className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-linear-to-br from-slate-950/92 via-slate-900/75 to-sky-900/65"          >
+className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135deg,rgba(15,23,42,1)_0%,rgba(14,116,144,0.94)_58%,rgba(103,232,249,0.9)_130%)]"          >
             <p className="text-xs uppercase tracking-widest text-primary-foreground/70">
               Expense
             </p>

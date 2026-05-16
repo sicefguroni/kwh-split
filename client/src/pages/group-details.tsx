@@ -9,6 +9,7 @@ import { InviteModal } from "@/components/dashboard/invite-modal";
 import { NotificationCenter } from "@/components/dashboard/notification-center";
 import { GroupCoverBackground } from "@/components/dashboard/group-media";
 import { useToast } from "@/components/ui/toast";
+import { MemberSettlementDetailsModal } from "@/components/bank-accounts/member-settlement-details-modal";
 import { useOnlineStatus } from "@/hooks/use-persistent-state";
 import { type GroupData, type GroupExpense } from "@/hooks/use-groups";
 import { useCurrentUser } from "@/features/auth/use-auth";
@@ -34,6 +35,9 @@ const EXPENSE_MENU_WIDTH = 152;
 const EXPENSE_MENU_HEIGHT = 96;
 const EXPENSE_MENU_OFFSET = 8;
 const EXPENSE_MENU_MARGIN = 12;
+
+const FALLBACK_GRADIENT =
+  "bg-[linear-gradient(135deg,rgba(15,23,42,1)_0%,rgba(14,116,144,0.94)_58%,rgba(103,232,249,0.9)_130%)]";
 
 export default function GroupDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -114,6 +118,7 @@ export default function GroupDetailsPage() {
   const [isLeaveConfirmOpen, setIsLeaveConfirmOpen] = useState(false);
   const [newAdminId, setNewAdminId] = useState<string>("");
   const [selectedExpense, setSelectedExpense] = useState<GroupExpense | null>(null);
+  const [selectedMemberDetails, setSelectedMemberDetails] = useState<{ id: string; name: string } | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [swipedId, setSwipedId] = useState<string | null>(null);
@@ -372,6 +377,16 @@ export default function GroupDetailsPage() {
     ? expenses.find((expense) => expense.id === openMenuId) ?? null
     : null;
 
+  const openMemberSettlementDetails = (memberId: string, memberName: string) => {
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+      navigate(`/group/${group.id}/member/${memberId}/payment-details`, {
+        state: { memberName },
+      });
+      return;
+    }
+    setSelectedMemberDetails({ id: memberId, name: memberName });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
@@ -625,7 +640,7 @@ export default function GroupDetailsPage() {
                           }}
                         >
                           {/* Date badge */}
-                          <div className="flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-xl bg-sky-500 text-white">
+                          <div className={cn("flex h-14 w-14 flex-shrink-0 flex-col items-center justify-center rounded-xl text-white", FALLBACK_GRADIENT)}>
                             <span className="text-[10px] font-semibold uppercase leading-none tracking-wide">{month}</span>
                             <span className="mt-0.5 text-xl font-bold leading-none">{day}</span>
                           </div>
@@ -764,7 +779,20 @@ export default function GroupDetailsPage() {
                         else
                           label = `You owe ${group.currency} ${abs.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                         return (
-                          <tr key={row.id} className="border-b border-slate-50 last:border-0">
+                          <tr
+                            key={row.id}
+                            className="cursor-pointer border-b border-slate-50 transition hover:bg-slate-50 last:border-0"
+                            onClick={() => openMemberSettlementDetails(row.id, row.name)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                openMemberSettlementDetails(row.id, row.name);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            aria-label={`View payment details for ${row.name}`}
+                          >
                             <td className="px-4 py-3 font-medium text-slate-900">{row.name}</td>
                             <td
                               className={cn(
@@ -785,10 +813,6 @@ export default function GroupDetailsPage() {
                   </table>
                 </div>
               )}
-              <p className="mt-4 text-xs text-slate-400">
-                Expenses paid by someone else are not split between pairs here—only when you or this
-                member paid.
-              </p>
             </div>
           </div>
         )}
@@ -808,10 +832,30 @@ export default function GroupDetailsPage() {
             {group.members.filter((m) => m.isActive).map((member) => (
               <div
                 key={member.id}
-                className="flex items-center justify-between rounded-3xl border border-slate-200 bg-white px-4 py-3"
+                className="flex cursor-pointer items-center justify-between rounded-3xl border border-slate-200 bg-white px-4 py-3 transition hover:border-slate-300 hover:bg-slate-50"
+                onClick={(event) => {
+                  const target = event.target as HTMLElement;
+                  if (target.closest("button")) {
+                    return;
+                  }
+                  openMemberSettlementDetails(member.id, member.name);
+                }}
+                onKeyDown={(event) => {
+                  const target = event.target as HTMLElement;
+                  if (target.closest("button")) {
+                    return;
+                  }
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openMemberSettlementDetails(member.id, member.name);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={`View payment details for ${member.name}`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-200 text-sm font-bold text-slate-700">
+                  <div className={cn("flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold text-white", FALLBACK_GRADIENT)}>
                     {member.name.charAt(0)}
                   </div>
                   <div>
@@ -904,6 +948,16 @@ export default function GroupDetailsPage() {
         groupId={group.id}
         groupName={group.name}
       />
+
+      {selectedMemberDetails ? (
+        <MemberSettlementDetailsModal
+          isOpen={true}
+          groupId={group.id}
+          memberId={selectedMemberDetails.id}
+          memberName={selectedMemberDetails.name}
+          onClose={() => setSelectedMemberDetails(null)}
+        />
+      ) : null}
 
       {isLeaveConfirmOpen ? (() => {
         const isAdmin = group.role === "admin";
