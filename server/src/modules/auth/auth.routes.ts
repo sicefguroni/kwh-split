@@ -41,5 +41,10 @@ authRouter.post("/login", writeLimiter, validateBody(LoginSchema), authControlle
 authRouter.get("/google/start", authController.oauthGoogleStart);
 authRouter.get("/google/callback", authController.oauthGoogleCallback);
 authRouter.post("/logout", authController.logout);
+authRouter.get(
+  "/groups/:groupId/members/:userId/settlement-profile",
+  requireAuth,
+  authController.memberSettlementProfile,
+);
 authRouter.get("/me", requireAuth, authController.me);
 authRouter.patch("/profile", requireAuth, validateBody(UpdateProfileSchema), authController.updateProfile);

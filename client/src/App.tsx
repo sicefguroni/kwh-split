@@ -16,6 +16,7 @@ const DashboardPage = lazy(() => import("@/pages/dashboard"));
 const ProfilePage = lazy(() => import("@/pages/profile"));
 const ExpenseDetailsPage = lazy(() => import("@/pages/expense-details"));
 const GroupDetailsPage = lazy(() => import("@/pages/group-details"));
+const MemberSettlementDetailsPage = lazy(() => import("@/pages/member-settlement-details"));
 const JoinGroupPage = lazy(() => import("@/pages/join-group"));
 const NotFoundPage = lazy(() => import("@/pages/not-found"));
 
@@ -40,6 +41,7 @@ export function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/profile" element={<ProfilePage />} />
               <Route path="/group/:groupId/expense/:expenseId" element={<ExpenseDetailsPage />} />
+              <Route path="/group/:groupId/member/:memberId/payment-details" element={<MemberSettlementDetailsPage />} />
               <Route path="/group/:id" element={<GroupDetailsPage />} />
             </Route>
 

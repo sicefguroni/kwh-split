@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api-client";
 import { ensureSessionRefreshed } from "@/lib/session-refresh";
-import type { AuthResponse, AuthUser } from "./types";
+import type { AuthResponse, AuthUser, MemberSettlementProfileResponse } from "./types";
 import type { LoginFormValues, SignupFormValues } from "./schemas";
 
 export interface UpdateProfileInput {
@@ -32,6 +32,16 @@ export const authApi = {
   me: (signal?: AbortSignal) =>
     apiClient.get<{ user: AuthUser }>(
       "/api/auth/me",
+      signal ? { signal } : undefined,
+    ),
+
+  getMemberSettlementProfile: (
+    groupId: string,
+    userId: string,
+    signal?: AbortSignal,
+  ) =>
+    apiClient.get<MemberSettlementProfileResponse>(
+      `/api/auth/groups/${groupId}/members/${userId}/settlement-profile`,
       signal ? { signal } : undefined,
     ),
 

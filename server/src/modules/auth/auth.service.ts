@@ -11,6 +11,8 @@ import { createRemoteJWKSet, jwtVerify, SignJWT } from "jose";
 import { randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
 import { markUserSessionActive } from "../../lib/auth-session-redis.js";
+import { groupsRepository } from "../groups/groups.repository.js";
+import { bankAccountsRepository } from "../bank-accounts/bank-accounts.repository.js";
 
 export interface PublicUser {
   id: string;
@@ -26,6 +28,18 @@ export interface AuthResult {
   user: PublicUser;
   tokens: { accessToken: string; refreshToken: string };
   redirectPath?: string | undefined;
+}
+
+export interface MemberSettlementProfile {
+  userId: string;
+  name: string;
+  qrImages: string[];
+  bankAccounts: Array<{
+    id: string;
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+  }>;
 }
 
 interface OAuthStatePayload {
@@ -344,6 +358,42 @@ export const authService = {
       }
       throw unauthorized("Invalid or expired session");
     }
+  },
+
+  async getMemberSettlementProfile(
+    requesterUserId: string,
+    groupId: number,
+    targetUserId: number,
+  ): Promise<MemberSettlementProfile> {
+    const requesterId = parseUserId(requesterUserId);
+    const requesterIsMember = await groupsRepository.isUserMember(groupId, requesterId);
+    if (!requesterIsMember) {
+      throw unauthorized("You are not a member of this group");
+    }
+
+    const targetIsMember = await groupsRepository.isUserMember(groupId, targetUserId);
+    if (!targetIsMember) {
+      throw badRequest("Selected member is not part of this group", "invalid_group_member");
+    }
+
+    const user = await userRepository.findById(targetUserId);
+    if (!user || !user.is_active) {
+      throw badRequest("Selected member could not be found", "invalid_group_member");
+    }
+
+    const accounts = await bankAccountsRepository.listByUserId(targetUserId);
+
+    return {
+      userId: String(user.user_id),
+      name: user.name,
+      qrImages: user.bank_qr_url ? [user.bank_qr_url] : [],
+      bankAccounts: accounts.map((account) => ({
+        id: String(account.bank_account_id),
+        bankName: account.bank_name,
+        accountName: user.name,
+        accountNumber: account.account_number,
+      })),
+    };
   },
 
   async updateProfile(userId: string, input: {
