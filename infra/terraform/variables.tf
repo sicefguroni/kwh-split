@@ -89,35 +89,9 @@ variable "ocr_api_key" {
   sensitive   = true
 }
 
-variable "smtp_host" {
-  type        = string
-  description = "SMTP host for group invitation emails (optional)"
-  default     = ""
-}
-
-variable "smtp_port" {
-  type        = number
-  description = "SMTP port (465 SSL, 587 STARTTLS, 25 plain)"
-  default     = 0
-}
-
-variable "smtp_user" {
-  type        = string
-  description = "SMTP username (optional)"
-  default     = ""
-  sensitive   = true
-}
-
-variable "smtp_pass" {
-  type        = string
-  description = "SMTP password (optional)"
-  default     = ""
-  sensitive   = true
-}
-
 variable "smtp_from" {
   type        = string
-  description = "From address for outbound mail, e.g. Split <noreply@yourdomain.com>"
+  description = "SES 'Source' / 'From' address for outbound mail, e.g. Split <noreply@yourdomain.com>"
   default     = ""
 }
 

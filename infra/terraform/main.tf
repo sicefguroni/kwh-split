@@ -36,15 +36,9 @@ locals {
     trimspace(var.ocr_api_key) != "" ? [
       { name = "OCR_API_KEY", value = var.ocr_api_key },
     ] : [],
-    trimspace(var.smtp_host) != "" && var.smtp_port > 0 && trimspace(var.smtp_from) != "" ? concat(
-      [
-        { name = "SMTP_HOST", value = var.smtp_host },
-        { name = "SMTP_PORT", value = tostring(var.smtp_port) },
-        { name = "SMTP_FROM", value = var.smtp_from },
-      ],
-      trimspace(var.smtp_user) != "" ? [{ name = "SMTP_USER", value = var.smtp_user }] : [],
-      trimspace(var.smtp_pass) != "" ? [{ name = "SMTP_PASS", value = var.smtp_pass }] : [],
-    ) : [],
+    trimspace(var.smtp_from) != "" ? [
+      { name = "SMTP_FROM", value = var.smtp_from },
+    ] : [],
   )
 
   worker_container_environment = [

@@ -27,10 +27,8 @@ enable_public_site = true
 # google_client_id     = ""
 # google_client_secret = ""
 
-# TabScanner receipt OCR + SMTP invites (copy from server/.env)
+# TabScanner receipt OCR (copy from server/.env)
 # ocr_api_key = ""
-# smtp_host   = "smtp.gmail.com"
-# smtp_port   = 587
-# smtp_user   = ""
-# smtp_pass   = ""
-# smtp_from   = "Split <you@gmail.com>"
+
+# SES "From" address for outbound email (SES handles delivery via IAM roles)
+# smtp_from   = "Split <noreply@yourdomain.com>"

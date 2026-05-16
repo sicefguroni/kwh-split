@@ -41,13 +41,7 @@ const EnvSchema = z.object({
     .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
   GOOGLE_CLIENT_SECRET: z
     .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
-  SMTP_HOST: z
-    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
-  SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_USER: z
-    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().optional()),
-  SMTP_PASS: z
-    .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().optional()),
+  /** SES "Source" / "From" address — e.g. 'Split <noreply@kwhsplit.app>'. */
   SMTP_FROM: z
     .preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().min(1).optional()),
 
@@ -79,7 +73,7 @@ const databaseUrl =
 export const env = Object.freeze({
   ...config,
   DATABASE_URL: databaseUrl,
-  SMTP_PASSWORD: config.SMTP_PASS, // Map PASS to PASSWORD for the mailer code
+
   OAUTH_CALLBACK_BASE_URL:
     config.OAUTH_CALLBACK_BASE_URL ?? `http://localhost:${config.PORT}`,
 });
