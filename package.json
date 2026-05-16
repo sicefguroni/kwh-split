@@ -15,7 +15,7 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.4.1+sha512.c7535560942e61a66819b16c8f6f595df50b4ec7482862d7c08794c489b09a47814674066060c4a45a0b63300845765a3b0e4f29d569f68b446ae8f068cd7247c0bb3df0fb4d7bdf9a",
+  "packageManager": "pnpm@9.15.4+sha512.b8fd18359695995c611c0f03292410fc02026456070a927d6d1b7473850730bbbc923a493b8d1b110398f8e13d7a27755a6b10201798e229cdfad5eae04ea5f15a76412",
   "dependencies": {
     "@fontsource/plus-jakarta-sans": "^5.2.8",
     "flag": "^5.0.1",
