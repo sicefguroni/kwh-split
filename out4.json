@@ -1,1 +1,0 @@
-{"errorType":"Error","errorMessage":"connect ECONNREFUSED 127.0.0.1:5432","trace":["Error: connect ECONNREFUSED 127.0.0.1:5432","    at /var/task/debt-reminders.js:9:15203","    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)","    at async Runtime.la [as handler] (/var/task/debt-reminders.js:9:30507)"]}
