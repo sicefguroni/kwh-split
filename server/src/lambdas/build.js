@@ -9,7 +9,7 @@ async function run() {
   const options = {
     bundle: true,
     platform: "node",
-    target: "node20",
+    target: "node22",
     outdir: resolve(__dirname, "../../dist/lambdas"),
     minify: true,
     sourcemap: true,

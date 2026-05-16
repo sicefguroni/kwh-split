@@ -34,7 +34,7 @@ resource "aws_cloudfront_distribution" "site" {
 
   enabled             = true
   is_ipv6_enabled     = true
-  comment             = "${local.name} SPA - v2.1"
+  comment             = "${local.name} SPA"
   default_root_object = "index.html"
   price_class         = var.cloudfront_price_class
   aliases             = local.cloudfront_aliases
