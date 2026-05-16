@@ -38,6 +38,7 @@ resource "aws_cloudfront_distribution" "site" {
   default_root_object = "index.html"
   price_class         = var.cloudfront_price_class
   aliases             = local.cloudfront_aliases
+  web_acl_id          = aws_wafv2_web_acl.main.arn
 
   # Static list required by Terraform; safe when count = 0 (no custom domain).
   depends_on = [aws_acm_certificate_validation.site]

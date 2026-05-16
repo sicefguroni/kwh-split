@@ -13,10 +13,10 @@ locals {
       { name = "NODE_ENV", value = "production" },
       { name = "PORT", value = "4000" },
       { name = "JWT_SECRET", value = var.jwt_secret },
-      { name = "DATABASE_HOST", value = aws_db_instance.postgres.address },
+      { name = "DATABASE_HOST", value = aws_rds_cluster.main.endpoint },
       { name = "DATABASE_PORT", value = "5432" },
-      { name = "DATABASE_USER", value = aws_db_instance.postgres.username },
-      { name = "DATABASE_NAME", value = aws_db_instance.postgres.db_name },
+      { name = "DATABASE_USER", value = aws_rds_cluster.main.master_username },
+      { name = "DATABASE_NAME", value = aws_rds_cluster.main.database_name },
       { name = "DATABASE_PASSWORD", value = var.db_password },
       { name = "DATABASE_SSL", value = "true" },
       { name = "REDIS_URL", value = local.redis_url },
@@ -45,10 +45,10 @@ locals {
   worker_container_environment = [
     { name = "NODE_ENV", value = "production" },
     { name = "JWT_SECRET", value = var.jwt_secret },
-    { name = "DATABASE_HOST", value = aws_db_instance.postgres.address },
+    { name = "DATABASE_HOST", value = aws_rds_cluster.main.endpoint },
     { name = "DATABASE_PORT", value = "5432" },
-    { name = "DATABASE_USER", value = aws_db_instance.postgres.username },
-    { name = "DATABASE_NAME", value = aws_db_instance.postgres.db_name },
+    { name = "DATABASE_USER", value = aws_rds_cluster.main.master_username },
+    { name = "DATABASE_NAME", value = aws_rds_cluster.main.database_name },
     { name = "DATABASE_PASSWORD", value = var.db_password },
     { name = "DATABASE_SSL", value = "true" },
     { name = "REDIS_URL", value = local.redis_url },
@@ -203,24 +203,30 @@ resource "aws_db_subnet_group" "main" {
   subnet_ids = aws_subnet.private[*].id
 }
 
-resource "aws_db_instance" "postgres" {
-  identifier                 = "${local.name}-pg"
-  engine                     = "postgres"
-  engine_version             = "16"
-  instance_class             = "db.t4g.micro"
-  allocated_storage          = 20
-  db_name                    = "split"
-  username                   = "split"
-  password                   = var.db_password
-  db_subnet_group_name       = aws_db_subnet_group.main.name
-  vpc_security_group_ids     = [aws_security_group.rds.id]
-  skip_final_snapshot        = true
-  publicly_accessible        = false
-  backup_retention_period    = 7
-  auto_minor_version_upgrade = true
-  tags = {
-    Name = "${local.name}-postgres"
+resource "aws_rds_cluster" "main" {
+  cluster_identifier     = "${local.name}-cluster"
+  engine                 = "aurora-postgresql"
+  engine_mode            = "provisioned"
+  engine_version         = "16.4"
+  database_name          = "split"
+  master_username        = "split"
+  master_password        = var.db_password
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  skip_final_snapshot    = true
+
+  serverlessv2_scaling_configuration {
+    max_capacity = 2.0
+    min_capacity = 0.5
   }
+}
+
+resource "aws_rds_cluster_instance" "main" {
+  cluster_identifier  = aws_rds_cluster.main.id
+  instance_class      = "db.serverless"
+  engine              = aws_rds_cluster.main.engine
+  engine_version      = aws_rds_cluster.main.engine_version
+  publicly_accessible = false
 }
 
 resource "aws_elasticache_subnet_group" "main" {
@@ -430,5 +436,57 @@ resource "aws_ecs_service" "worker" {
     subnets          = aws_subnet.public[*].id
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = true
+  }
+}
+
+# --- Auto Scaling for API ---
+resource "aws_appautoscaling_target" "api_target" {
+  max_capacity       = 5
+  min_capacity       = 1
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.api.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "api_cpu" {
+  name               = "${local.name}-api-cpu-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.api_target.resource_id
+  scalable_dimension = aws_appautoscaling_target.api_target.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.api_target.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value       = 70.0
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
+  }
+}
+
+# --- Auto Scaling for Worker ---
+resource "aws_appautoscaling_target" "worker_target" {
+  max_capacity       = 3
+  min_capacity       = 1
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.worker.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "worker_cpu" {
+  name               = "${local.name}-worker-cpu-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.worker_target.resource_id
+  scalable_dimension = aws_appautoscaling_target.worker_target.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.worker_target.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value       = 70.0
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
   }
 }

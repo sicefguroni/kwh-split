@@ -47,8 +47,13 @@ resource "aws_iam_role_policy" "lambda_ses" {
 
 locals {
   lambda_env = {
-    DATABASE_URL = "postgres://${aws_db_instance.postgres.username}:${var.db_password}@${aws_db_instance.postgres.address}:5432/${aws_db_instance.postgres.db_name}?sslmode=require"
-    SMTP_FROM    = var.smtp_from
+    DATABASE_HOST     = aws_rds_cluster.main.endpoint
+    DATABASE_PORT     = "5432"
+    DATABASE_USER     = aws_rds_cluster.main.master_username
+    DATABASE_PASSWORD = var.db_password
+    DATABASE_NAME     = aws_rds_cluster.main.database_name
+    DATABASE_SSL      = "true"
+    SMTP_FROM     = var.smtp_from
   }
 }
 

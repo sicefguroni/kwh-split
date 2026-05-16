@@ -42,7 +42,7 @@ output "ecr_worker_repository_url" {
 }
 
 output "rds_endpoint" {
-  value       = aws_db_instance.postgres.address
+  value       = aws_rds_cluster.main.endpoint
   description = "PostgreSQL hostname for DATABASE_URL"
 }
 
