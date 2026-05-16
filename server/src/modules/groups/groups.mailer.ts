@@ -1,39 +1,27 @@
-import nodemailer, { type Transporter } from "nodemailer";
+import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 import { env } from "../../config/env.js";
 
 export type GroupInviteDeliveryStatus = "sent" | "skipped" | "failed";
 
-let cachedTransporter: Transporter | null = null;
+let cachedSesClient: SESClient | null = null;
 
-const isSmtpConfigured = (): boolean =>
-  Boolean(env.SMTP_HOST && env.SMTP_PORT && env.SMTP_FROM);
+const isSesConfigured = (): boolean =>
+  Boolean(env.SMTP_FROM); // We still use SMTP_FROM as the 'Source' address for SES
 
-const getTransporter = (): Transporter | null => {
-  if (!isSmtpConfigured()) {
+const getSesClient = (): SESClient | null => {
+  if (!isSesConfigured()) {
     return null;
   }
 
-  if (cachedTransporter) {
-    return cachedTransporter;
+  if (cachedSesClient) {
+    return cachedSesClient;
   }
 
-  const port = env.SMTP_PORT!;
-  cachedTransporter = nodemailer.createTransport({
-    host: env.SMTP_HOST,
-    port,
-    secure: port === 465,
-    requireTLS: port === 587,
-    ...(env.SMTP_USER
-      ? {
-        auth: {
-          user: env.SMTP_USER,
-          pass: env.SMTP_PASSWORD ?? "",
-        },
-      }
-      : {}),
+  cachedSesClient = new SESClient({
+    region: process.env.AWS_REGION || "us-east-1",
   });
 
-  return cachedTransporter;
+  return cachedSesClient;
 };
 
 export async function sendGroupInvitationEmail(input: {
@@ -43,26 +31,21 @@ export async function sendGroupInvitationEmail(input: {
   inviteUrl: string;
   expiresAt: Date;
 }): Promise<GroupInviteDeliveryStatus> {
-  const transporter = getTransporter();
-  if (!transporter || !env.SMTP_FROM) {
+  const ses = getSesClient();
+  if (!ses || !env.SMTP_FROM) {
     return "skipped";
   }
 
-  try {
-    await transporter.sendMail({
-      from: env.SMTP_FROM,
-      to: input.to,
-      subject: `${input.inviterName} invited you to join ${input.groupName}`,
-      text: [
-        `${input.inviterName} invited you to join "${input.groupName}" on Split.`,
-        "",
-        `Open this invite: ${input.inviteUrl}`,
-        "If you already have an account, sign in to accept the invite.",
-        "If you are new to Split, create an account first and then continue from the invite page.",
-        `This invite expires on ${input.expiresAt.toISOString()}.`,
-      ].join("\n"),
-      // Replace your existing html block with this:
-      html: `
+  const textBody = [
+    `${input.inviterName} invited you to join "${input.groupName}" on Split.`,
+    "",
+    `Open this invite: ${input.inviteUrl}`,
+    "If you already have an account, sign in to accept the invite.",
+    "If you are new to Split, create an account first and then continue from the invite page.",
+    `This invite expires on ${input.expiresAt.toISOString()}.`,
+  ].join("\n");
+
+  const htmlBody = `
   <div style="background-color: #f9fafb; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
     <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
       <tr>
@@ -106,11 +89,34 @@ export async function sendGroupInvitationEmail(input: {
       </tr>
     </table>
   </div>
-`,
-    });
+`;
+
+  try {
+    await ses.send(new SendEmailCommand({
+      Source: env.SMTP_FROM,
+      Destination: {
+        ToAddresses: [input.to],
+      },
+      Message: {
+        Subject: {
+          Data: `${input.inviterName} invited you to join ${input.groupName}`,
+          Charset: "UTF-8",
+        },
+        Body: {
+          Text: {
+            Data: textBody,
+            Charset: "UTF-8",
+          },
+          Html: {
+            Data: htmlBody,
+            Charset: "UTF-8",
+          },
+        },
+      },
+    }));
     return "sent";
   } catch (error) {
-    console.error("Failed to send group invitation email", error);
+    console.error("Failed to send group invitation email via SES", error);
     return "failed";
   }
 }

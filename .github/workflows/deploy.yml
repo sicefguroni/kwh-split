@@ -1,0 +1,85 @@
+name: Deploy to Dev
+
+on:
+  push:
+    branches:
+      - dev
+
+env:
+  AWS_REGION: ap-southeast-1
+  TF_VAR_environment: dev
+  TF_VAR_project: kwh-split
+  TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+  TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
+  TF_VAR_smtp_from: ${{ secrets.TF_VAR_SMTP_FROM }}
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Web & Server
+        run: pnpm -r run build
+
+      - name: Build Lambdas
+        run: node server/src/lambdas/build.js
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: infra/terraform
+        run: terraform init
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push API image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: kwh-split-dev-api
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --target api -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Build, tag, and push Worker image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: kwh-split-dev-worker
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --target worker -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: Terraform Apply
+        working-directory: infra/terraform
+        env:
+          TF_VAR_api_image_tag: ${{ github.sha }}
+          TF_VAR_worker_image_tag: ${{ github.sha }}
+        run: terraform apply -auto-approve
