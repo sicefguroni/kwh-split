@@ -14,7 +14,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY server ./server
 RUN pnpm --filter @split/server run build
-RUN pnpm --filter @split/server deploy --prod --legacy /out
+RUN pnpm --filter @split/server deploy --prod /out
 
 FROM node:22-bookworm-slim AS runner-base
 WORKDIR /app
