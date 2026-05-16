@@ -77,8 +77,8 @@ CREATE TABLE group_notifications (
     CONSTRAINT chk_group_notification_type CHECK (type IN ('group_invitation_accepted', 'group_invitation_declined', 'group_deleted', 'member_left', 'admin_transferred', 'member_joined', 'expense_added', 'expense_deleted', 'settlement_paid'))
 );
 
--- Create EXPENSERS (Expenses) table
-CREATE TABLE expensers (
+-- Create EXPENSES table
+CREATE TABLE expenses (
     expense_id SERIAL PRIMARY KEY,
     group_id INT NOT NULL,
     title_description VARCHAR(255) NOT NULL,
@@ -91,7 +91,7 @@ CREATE TABLE expensers (
     receipt_image_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_expensers_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE
+    CONSTRAINT fk_expenses_group FOREIGN KEY (group_id) REFERENCES groups(group_id) ON DELETE CASCADE
 );
 
 -- Create RECEIPT_ITEMS table
@@ -102,7 +102,7 @@ CREATE TABLE receipt_items (
     price DECIMAL(10, 2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_receipt_items_expense FOREIGN KEY (expense_id) REFERENCES expensers(expense_id) ON DELETE CASCADE
+    CONSTRAINT fk_receipt_items_expense FOREIGN KEY (expense_id) REFERENCES expenses(expense_id) ON DELETE CASCADE
 );
 
 -- Create EXPENSE_SPLITS table
@@ -116,12 +116,12 @@ CREATE TABLE expense_splits (
     is_settled BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_expense_splits_expense FOREIGN KEY (expense_id) REFERENCES expensers(expense_id) ON DELETE CASCADE,
+    CONSTRAINT fk_expense_splits_expense FOREIGN KEY (expense_id) REFERENCES expenses(expense_id) ON DELETE CASCADE,
     CONSTRAINT fk_expense_splits_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- Create RECEIPT_ITEMS_ASSIGNMENTS table
-CREATE TABLE receipt_items_assignments (
+-- Create RECEIPT_ITEM_ASSIGNMENTS table
+CREATE TABLE receipt_item_assignments (
     assignment_id SERIAL PRIMARY KEY,
     item_id INT NOT NULL,
     user_id INT NOT NULL,
@@ -136,12 +136,12 @@ CREATE TABLE receipt_items_assignments (
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_group_members_group ON group_members(group_id);
 CREATE INDEX idx_group_members_user ON group_members(user_id);
-CREATE INDEX idx_expensers_group ON expensers(group_id);
+CREATE INDEX idx_expenses_group ON expenses(group_id);
 CREATE INDEX idx_receipt_items_expense ON receipt_items(expense_id);
 CREATE INDEX idx_expense_splits_expense ON expense_splits(expense_id);
 CREATE INDEX idx_expense_splits_user ON expense_splits(user_id);
-CREATE INDEX idx_receipt_items_assignments_item ON receipt_items_assignments(item_id);
-CREATE INDEX idx_receipt_items_assignments_user ON receipt_items_assignments(user_id);
+CREATE INDEX idx_receipt_item_assignments_item ON receipt_item_assignments(item_id);
+CREATE INDEX idx_receipt_item_assignments_user ON receipt_item_assignments(user_id);
 CREATE INDEX idx_groups_invite_token ON groups(invite_token);
 CREATE INDEX idx_group_invitations_group ON group_invitations(group_id);
 CREATE INDEX idx_group_invitations_invitee_email ON group_invitations(invitee_email);

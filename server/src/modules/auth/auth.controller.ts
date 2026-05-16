@@ -8,6 +8,7 @@ import { unauthorized } from "../../utils/errors.js";
 import { verifyAccessToken } from "../../utils/jwt.js";
 import { clearUserSessionActive } from "../../lib/auth-session-redis.js";
 import type { AuthProvider } from "./auth.repository.js";
+import { parsePositiveInt } from "../common/authorization.js";
 
 type TypedBody<T> = Request<unknown, unknown, T>;
 const OAUTH_STATE_COOKIE = "split_oauth_state";
@@ -166,6 +167,18 @@ export const authController = {
       const userId = getAuthenticatedUserId(req);
       const user = await authService.getCurrentUser(userId);
       res.status(200).json({ user });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async memberSettlementProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const requesterUserId = getAuthenticatedUserId(req);
+      const groupId = parsePositiveInt(req.params.groupId ?? "", "groupId");
+      const targetUserId = parsePositiveInt(req.params.userId ?? "", "userId");
+      const profile = await authService.getMemberSettlementProfile(requesterUserId, groupId, targetUserId);
+      res.status(200).json({ profile });
     } catch (error) {
       next(error);
     }
