@@ -97,8 +97,8 @@ resource "aws_cloudwatch_event_rule" "weekly_summary" {
 }
 
 resource "aws_cloudwatch_event_target" "weekly_summary" {
-  rule       = aws_cloudwatch_event_rule.weekly_summary.name
-  arn        = aws_lambda_function.weekly_summary.arn
+  rule = aws_cloudwatch_event_rule.weekly_summary.name
+  arn  = aws_lambda_function.weekly_summary.arn
 }
 
 resource "aws_lambda_permission" "weekly_summary_events" {
@@ -116,8 +116,8 @@ resource "aws_cloudwatch_event_rule" "debt_reminders" {
 }
 
 resource "aws_cloudwatch_event_target" "debt_reminders" {
-  rule       = aws_cloudwatch_event_rule.debt_reminders.name
-  arn        = aws_lambda_function.debt_reminders.arn
+  rule = aws_cloudwatch_event_rule.debt_reminders.name
+  arn  = aws_lambda_function.debt_reminders.arn
 }
 
 resource "aws_lambda_permission" "debt_reminders_events" {
