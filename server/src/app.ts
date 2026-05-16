@@ -34,7 +34,15 @@ export function createApp(): Express {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.WEB_ORIGIN,
+      origin: (requestOrigin, callback) => {
+        if (!requestOrigin) return callback(null, true);
+        if (env.NODE_ENV === "development") return callback(null, true);
+        
+        // In production, allow the exact WEB_ORIGIN
+        if (requestOrigin === env.WEB_ORIGIN) return callback(null, true);
+        
+        callback(new Error("Not allowed by CORS"));
+      },
       credentials: true,
     }),
   );
