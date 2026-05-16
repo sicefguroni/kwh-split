@@ -13,7 +13,7 @@
     "deploy:site": "bash infra/scripts/deploy-site.sh"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "packageManager": "pnpm@9.15.4+sha512.b8fd18359695995c611c0f03292410fc02026456070a927d6d1b7473850730bbbc923a493b8d1b110398f8e13d7a27755a6b10201798e229cdfad5eae04ea5f15a76412",
   "dependencies": {

@@ -64,7 +64,7 @@ resource "aws_lambda_function" "weekly_summary" {
   filename         = data.archive_file.weekly_summary_zip.output_path
   source_code_hash = data.archive_file.weekly_summary_zip.output_base64sha256
   handler          = "weekly-summary.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   timeout          = 120
 
   environment {
@@ -83,7 +83,7 @@ resource "aws_lambda_function" "debt_reminders" {
   filename         = data.archive_file.debt_reminders_zip.output_path
   source_code_hash = data.archive_file.debt_reminders_zip.output_base64sha256
   handler          = "debt-reminders.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   timeout          = 120
 
   environment {
