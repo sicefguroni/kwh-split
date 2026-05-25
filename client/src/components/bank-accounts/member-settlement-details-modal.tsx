@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Copy, Download, QrCode, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Copy, Download, QrCode, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/toast";
 import { useMemberSettlementProfile } from "@/features/auth/use-auth";
+import { useGroupQuery } from "@/features/groups/use-groups";
+import { useSettlementPlanQuery } from "@/features/settlements/use-settlements";
 import { cn } from "@/lib/cn";
 
 interface MemberSettlementDetailsModalProps {
@@ -29,7 +31,39 @@ export function MemberSettlementDetailsSections({
 }: MemberSettlementDetailsSectionsProps) {
   const { addToast } = useToast();
   const { data: profile, isLoading, isError } = useMemberSettlementProfile(groupId, memberId, true);
+  const { data: group } = useGroupQuery(groupId);
+  const { data: settlementPlan = [] } = useSettlementPlanQuery(groupId);
   const [currentQrIndex, setCurrentQrIndex] = useState(0);
+
+  const memberNumId = Number(memberId);
+
+  const planToPay = useMemo(
+    () =>
+      settlementPlan
+        .filter((e) => e.fromUserId === memberNumId)
+        .map((e) => ({
+          toUserId: e.toUserId,
+          toName:
+            group?.members.find((m) => m.id === String(e.toUserId))?.name ??
+            `User ${e.toUserId}`,
+          amount: e.amount,
+        })),
+    [settlementPlan, memberNumId, group?.members],
+  );
+
+  const planToReceive = useMemo(
+    () =>
+      settlementPlan
+        .filter((e) => e.toUserId === memberNumId)
+        .map((e) => ({
+          fromUserId: e.fromUserId,
+          fromName:
+            group?.members.find((m) => m.id === String(e.fromUserId))?.name ??
+            `User ${e.fromUserId}`,
+          amount: e.amount,
+        })),
+    [settlementPlan, memberNumId, group?.members],
+  );
 
   useEffect(() => {
     setCurrentQrIndex(0);
@@ -78,8 +112,83 @@ export function MemberSettlementDetailsSections({
     );
   }
 
+  const hasPlanItems = planToPay.length > 0 || planToReceive.length > 0;
+
   return (
     <div className={cn("space-y-6", className)}>
+      {/* Settlement plan for this member */}
+      {hasPlanItems && (
+        <section className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-slate-900">Settlement plan</h3>
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              {planToPay.length + planToReceive.length} step{planToPay.length + planToReceive.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Optimized payments to settle all debts for this group.
+          </p>
+
+          <div className="mt-4 space-y-3">
+            {/* Items where this member pays */}
+            {planToPay.map((entry, idx) => (
+              <div
+                key={`pay-${idx}`}
+                className="flex items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50/50 px-4 py-3"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100">
+                  <ArrowUp className="h-4 w-4 text-amber-700" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Pay {entry.toName}
+                  </p>
+                  <p className="text-xs text-slate-500">You send</p>
+                </div>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-amber-800">
+                  {group?.currency ?? "₱"} {entry.amount.toFixed(2)}
+                </span>
+              </div>
+            ))}
+
+            {/* Items where this member receives */}
+            {planToReceive.map((entry, idx) => (
+              <div
+                key={`rcv-${idx}`}
+                className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/50 px-4 py-3"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                  <ArrowDown className="h-4 w-4 text-emerald-700" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Receive from {entry.fromName}
+                  </p>
+                  <p className="text-xs text-slate-500">They send</p>
+                </div>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-emerald-800">
+                  {group?.currency ?? "₱"} {entry.amount.toFixed(2)}
+                </span>
+              </div>
+            ))}
+
+            {/* Both sides (pay + receive) — shows net settlement */}
+            {planToPay.length > 0 && planToReceive.length > 0 && (
+              <div className="mt-4 rounded-xl bg-slate-100 px-4 py-2.5 text-right">
+                <span className="text-xs text-slate-500">Net: </span>
+                <span className="text-sm font-bold tabular-nums text-slate-900">
+                  {group?.currency ?? "₱"}{" "}
+                  {(
+                    planToReceive.reduce((s, e) => s + e.amount, 0) -
+                    planToPay.reduce((s, e) => s + e.amount, 0)
+                  ).toFixed(2)}
+                </span>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="space-y-4 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
         <div className="flex items-center justify-between gap-4">
           <div>

@@ -29,6 +29,7 @@ import {
   resolveViewerMemberId,
   totalSpent,
 } from "@/lib/group-money";
+import { useSettlementPlanQuery, useSettlementHistoryQuery } from "@/features/settlements/use-settlements";
 import { cn } from "@/lib/cn";
 
 const EXPENSE_MENU_WIDTH = 152;
@@ -82,15 +83,20 @@ export default function GroupDetailsPage() {
         amount: expense.totalAmount,
         currency: group?.currency ?? "₱",
         paidBy: expense.paidByUserId ?? "",
+        payerAmounts: expense.payerAmounts?.map((p) => ({
+          userId: p.userId,
+          amountPaid: p.amountPaid,
+        })),
         date: expense.saleDate,
         note: expense.note ?? "",
         category: expense.category ?? "General",
         ...(expense.splitType && {
           splitType: expense.splitType as "equal" | "percentage" | "shares" | "exact" | "itemized",
         }),
-        splits: expense.splits.map((split) => ({
+        splits: (expense.splits ?? []).map((split) => ({
           memberId: split.userId,
           amount: split.amountOwed,
+          ...(split.originalAmount != null && { originalAmount: split.originalAmount }),
           ...(split.percentage != null && { percentage: split.percentage }),
           ...(split.share != null && { share: split.share }),
           isSettled: split.isSettled,
@@ -133,11 +139,37 @@ export default function GroupDetailsPage() {
     [expenses],
   );
 
+  const { data: settlementPlan = [] } = useSettlementPlanQuery(groupId);
+  const { data: settlementHistory = [] } = useSettlementHistoryQuery(groupId);
+
+  const currentExpenseIds = useMemo(
+    () => new Set(expenses.map((e) => e.id)),
+    [expenses],
+  );
+
+  const relevantSettlementHistory = useMemo(
+    () => settlementHistory.filter((s) => {
+      if (!s.note) return true;
+      const match = s.note.match(/\[expenses:([^\]]+)\]/);
+      if (!match || !match[1]) return true;
+      return match[1].split(",").some((id) => currentExpenseIds.has(id));
+    }),
+    [settlementHistory, currentExpenseIds],
+  );
+
   const viewerNet = useMemo(() => {
     if (!group) return 0;
     const vid = resolveViewerMemberId(group, user?.name, user?.id);
-    return vid ? netForMember(expenses, vid) : 0;
-  }, [group, expenses, user?.id, user?.name]);
+    if (!vid) return 0;
+    const expenseNet = netForMember(expenses, vid);
+    const sent = relevantSettlementHistory
+      .filter((s) => s.fromUserId === vid)
+      .reduce((sum, s) => sum + s.amountPaid, 0);
+    const received = relevantSettlementHistory
+      .filter((s) => s.toUserId === vid)
+      .reduce((sum, s) => sum + s.amountPaid, 0);
+    return expenseNet + sent - received;
+  }, [group, expenses, user?.id, user?.name, relevantSettlementHistory]);
 
   const balancesWithOthers = useMemo(() => {
     if (!group) return [];
@@ -145,12 +177,18 @@ export default function GroupDetailsPage() {
     if (!vid) return [];
     return group.members
       .filter((m) => m.id !== vid)
-      .map((m) => ({
-        id: m.id,
-        name: m.name,
-        netOwesYou: netMemberOwesViewer(expenses, vid, m.id),
-      }));
-  }, [group, expenses, user?.id, user?.name]);
+      .map((m) => {
+        const expenseNet = netMemberOwesViewer(expenses, vid, m.id);
+        const memberPaidViewer = relevantSettlementHistory
+          .filter((s) => s.fromUserId === m.id && s.toUserId === vid)
+          .reduce((sum, s) => sum + s.amountPaid, 0);
+        const viewerPaidMember = relevantSettlementHistory
+          .filter((s) => s.fromUserId === vid && s.toUserId === m.id)
+          .reduce((sum, s) => sum + s.amountPaid, 0);
+        const netOwesYou = expenseNet - memberPaidViewer + viewerPaidMember;
+        return { id: m.id, name: m.name, netOwesYou };
+      });
+  }, [group, expenses, user?.id, user?.name, relevantSettlementHistory]);
 
   const groupedExpenses = useMemo(() => {
     const map = new Map<string, GroupExpense[]>();
@@ -289,6 +327,11 @@ export default function GroupDetailsPage() {
     titleDescription: expense.name,
     totalAmount: expense.amount,
     ...(expense.paidBy ? { paidByUserId: Number(expense.paidBy) } : {}),
+    ...(expense.payerAmounts?.length
+      ? { payerUserIds: expense.payerAmounts.map((p) => ({ userId: Number(p.userId), amountPaid: p.amountPaid })) }
+      : expense.paidBy
+        ? { payerUserIds: [{ userId: Number(expense.paidBy), amountPaid: expense.amount }] }
+        : {}),
     saleDate: expense.date,
     note: expense.note ?? "",
     category: expense.category ?? "General",
@@ -578,8 +621,12 @@ export default function GroupDetailsPage() {
                     const d = new Date(expense.date);
                     const month = d.toLocaleString(undefined, { month: "short" }).toUpperCase();
                     const day = d.getDate();
-                    const paidByName = group.members.find((m) => m.id === expense.paidBy)?.name ?? "Unknown";
-                    const vid = resolveViewerMemberId(group, user?.name);
+                    const payerNames = expense.payerAmounts?.length
+                      ? expense.payerAmounts
+                          .map((p) => group.members.find((m) => m.id === p.userId)?.name ?? "Unknown")
+                          .join(", ")
+                      : group.members.find((m) => m.id === expense.paidBy)?.name ?? "Unknown";
+                    const vid = resolveViewerMemberId(group, user?.name, user?.id);
                     const viewerIsPayee = vid === expense.paidBy;
                     const viewerSplit = vid ? expense.splits.find((s) => s.memberId === vid) : undefined;
                     const isLast = idx === items.length - 1;
@@ -648,7 +695,9 @@ export default function GroupDetailsPage() {
                           {/* Middle: name + paid by */}
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-semibold text-slate-900">{expense.name}</p>
-                            <p className="mt-0.5 text-xs text-slate-500">Paid by {paidByName}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              Paid by {payerNames}
+                            </p>
                           </div>
 
                           {/* Right: amount + your share */}
@@ -744,6 +793,61 @@ export default function GroupDetailsPage() {
                   : "After splits, you owe about this much in this group."}
               </p>
             </div>
+
+          {/* Settlement plan - optimized min transactions */}
+          {settlementPlan.length > 0 && (
+            <div className="rounded-3xl border border-emerald-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-slate-900">Settlement plan</h3>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  {settlementPlan.length} transaction{settlementPlan.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-slate-500">
+                Optimized to minimize payments. Complete these to settle all debts.
+              </p>
+
+              <div className="mt-5 space-y-3">
+                {settlementPlan.map((entry, idx) => {
+                  const fromName = group.members.find((m) => m.id === String(entry.fromUserId))?.name ?? `User ${entry.fromUserId}`;
+                  const toName = group.members.find((m) => m.id === String(entry.toUserId))?.name ?? `User ${entry.toUserId}`;
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-sm font-bold text-amber-800">
+                          {fromName.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">{fromName}</p>
+                          <p className="text-xs text-slate-500">pays</p>
+                        </div>
+                      </div>
+                      <div className="mx-3 flex shrink-0 items-center gap-2">
+                        <span className="text-sm font-bold tabular-nums text-slate-900">
+                          {group.currency} {entry.amount.toFixed(2)}
+                        </span>
+                        <svg className="h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M5 12h14M13 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="min-w-0 text-right">
+                          <p className="truncate text-sm font-semibold text-slate-900">{toName}</p>
+                          <p className="text-xs text-slate-500">receives</p>
+                        </div>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-sm font-bold text-emerald-800">
+                          {toName.charAt(0)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-lg font-semibold text-slate-900">Balances with you</h3>
@@ -929,7 +1033,7 @@ export default function GroupDetailsPage() {
         }}
         onSubmit={selectedExpense ? handleEditExpense : handleAddExpense}
         initialData={selectedExpense ?? undefined}
-        members={group.members.filter((m) => m.isActive)}
+        members={selectedExpense ? group.members : group.members.filter((m) => m.isActive)}
         currency={group.currency}
         groupName={group.name}
       />
