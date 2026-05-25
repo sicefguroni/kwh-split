@@ -8,6 +8,7 @@ export const settlementsRouter: Router = Router();
 
 settlementsRouter.use(requireAuth);
 settlementsRouter.get("/:groupId", settlementsController.dashboard);
+settlementsRouter.get("/:groupId/plan", settlementsController.plan);
 settlementsRouter.post(
   "/:groupId/mark-paid",
   validateBody(MarkPaidSchema),

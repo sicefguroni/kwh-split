@@ -33,6 +33,17 @@ export const settlementsController = {
     }
   },
 
+  async plan(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = parseSubjectUserId(getAuthenticatedUserId(req));
+      const groupId = parsePositiveInt(req.params.groupId ?? "", "groupId");
+      const plan = await settlementsService.getPlan(groupId, userId);
+      res.status(200).json({ plan });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async history(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = parseSubjectUserId(getAuthenticatedUserId(req));

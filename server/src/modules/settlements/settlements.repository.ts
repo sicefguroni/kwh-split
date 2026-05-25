@@ -29,15 +29,50 @@ export interface SettlementEventRecord {
   created_at: Date;
 }
 
+interface NetBalanceRow {
+  user_id: number;
+  net_balance: string;
+  total_paid: string;
+  total_owed: string;
+}
+
 export const settlementsRepository = {
   async getOutstandingByUser(groupId: number): Promise<OwedRow[]> {
     const { rows } = await pool.query<OwedRow>(
-      `SELECT es.user_id, COALESCE(SUM(es.amount_owed), 0)::text AS outstanding_amount
-       FROM expense_splits es
-       INNER JOIN expenses e ON e.expense_id = es.expense_id
-       WHERE e.group_id = $1 AND es.is_settled = FALSE
-       GROUP BY es.user_id
-       ORDER BY es.user_id`,
+      `SELECT
+         COALESCE(combined.user_id, sr.user_id) AS user_id,
+         (COALESCE(combined.split_total, 0) - COALESCE(ep.paid_total, 0) + COALESCE(sr.received_total, 0))::text AS outstanding_amount
+        FROM (
+           SELECT es.user_id, COALESCE(SUM(es.share_amount), 0) AS split_total
+           FROM (
+             SELECT
+               es.user_id,
+               CASE
+                WHEN es.original_amount IS NOT NULL AND es.original_amount > 0 THEN es.amount_owed
+                 WHEN es.percentage IS NOT NULL THEN e.total_amount * es.percentage / 100
+                 WHEN es.share IS NOT NULL THEN e.total_amount * es.share / NULLIF(SUM(es.share) OVER (PARTITION BY es.expense_id), 0)
+                 ELSE e.total_amount / NULLIF(COUNT(*) OVER (PARTITION BY es.expense_id), 0)
+               END AS share_amount
+             FROM expense_splits es
+             INNER JOIN expenses e ON e.expense_id = es.expense_id
+             WHERE e.group_id = $1 AND es.is_settled = FALSE
+           ) es
+           GROUP BY es.user_id
+        ) combined
+       FULL JOIN (
+         SELECT ep.user_id, COALESCE(SUM(ep.amount_paid), 0) AS paid_total
+         FROM expense_payers ep
+         INNER JOIN expenses e ON e.expense_id = ep.expense_id
+         WHERE e.group_id = $1
+         GROUP BY ep.user_id
+       ) ep ON ep.user_id = combined.user_id
+       FULL JOIN (
+         SELECT to_user_id AS user_id, COALESCE(SUM(amount_paid), 0) AS received_total
+         FROM settlement_events
+         WHERE group_id = $1
+         GROUP BY to_user_id
+       ) sr ON sr.user_id = COALESCE(combined.user_id, ep.user_id)
+       ORDER BY COALESCE(combined.user_id, ep.user_id, sr.user_id)`,
       [groupId],
     );
     return rows;
@@ -57,12 +92,19 @@ export const settlementsRepository = {
 
   async getUnsettledAmountForUser(groupId: number, userId: number): Promise<number> {
     const { rows } = await pool.query<UnsettledAmountRow>(
-      `SELECT COALESCE(SUM(es.amount_owed), 0)::text AS unsettled_amount
-       FROM expense_splits es
-       INNER JOIN expenses e ON e.expense_id = es.expense_id
-       WHERE e.group_id = $1
-         AND es.user_id = $2
-         AND es.is_settled = FALSE`,
+      `SELECT (COALESCE(es.total_owed, 0) - COALESCE(ep.total_paid, 0))::text AS unsettled_amount
+       FROM (
+         SELECT COALESCE(SUM(es2.amount_owed), 0) AS total_owed
+         FROM expense_splits es2
+         INNER JOIN expenses e2 ON e2.expense_id = es2.expense_id
+         WHERE e2.group_id = $1 AND es2.user_id = $2 AND es2.is_settled = FALSE
+       ) es
+       CROSS JOIN (
+         SELECT COALESCE(SUM(ep.amount_paid), 0) AS total_paid
+         FROM expense_payers ep
+         INNER JOIN expenses e3 ON e3.expense_id = ep.expense_id
+         WHERE e3.group_id = $1 AND ep.user_id = $2
+       ) ep`,
       [groupId, userId],
     );
     return Number(rows[0]?.unsettled_amount ?? "0");
@@ -204,5 +246,63 @@ export const settlementsRepository = {
       [groupId],
     );
     return rows;
+  },
+
+  async getNetBalances(
+    groupId: number,
+  ): Promise<{ userId: number; netBalance: number; totalPaid: number; totalOwed: number }[]> {
+    const { rows } = await pool.query<NetBalanceRow>(
+      `WITH payers AS (
+         SELECT user_id, COALESCE(SUM(amount_paid), 0) AS total_paid
+         FROM expense_payers
+         WHERE expense_id IN (SELECT expense_id FROM expenses WHERE group_id = $1)
+         GROUP BY user_id
+       UNION ALL
+          SELECT payer_user_id AS user_id, total_amount::numeric
+          FROM expenses
+          WHERE group_id = $1
+            AND payer_user_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM expense_payers
+              WHERE expense_payers.expense_id = expenses.expense_id
+            )
+       ),
+       payers_agg AS (
+         SELECT user_id, SUM(total_paid) AS total_paid
+         FROM payers
+         GROUP BY user_id
+       )
+       SELECT
+         COALESCE(es.user_id, ep.user_id) AS user_id,
+         (COALESCE(ep.total_paid, 0) - COALESCE(es.total_share, 0))::text AS net_balance,
+         COALESCE(ep.total_paid, 0)::text AS total_paid,
+         COALESCE(es.total_share, 0)::text AS total_owed
+        FROM (
+          SELECT user_id, SUM(share_amount) AS total_share
+          FROM (
+            SELECT
+              es.user_id,
+              CASE
+                WHEN es.original_amount IS NOT NULL AND es.original_amount > 0 THEN es.amount_owed
+                WHEN es.percentage IS NOT NULL THEN e.total_amount * es.percentage / 100
+                WHEN es.share IS NOT NULL THEN e.total_amount * es.share / NULLIF(SUM(es.share) OVER (PARTITION BY es.expense_id), 0)
+                ELSE e.total_amount / NULLIF(COUNT(*) OVER (PARTITION BY es.expense_id), 0)
+              END AS share_amount
+            FROM expense_splits es
+            INNER JOIN expenses e ON e.expense_id = es.expense_id
+            WHERE e.group_id = $1
+          ) per_expense
+          GROUP BY user_id
+        ) es
+       FULL JOIN payers_agg ep ON ep.user_id = es.user_id
+       ORDER BY COALESCE(es.user_id, ep.user_id)`,
+      [groupId],
+    );
+    return rows.map((row) => ({
+      userId: row.user_id,
+      netBalance: Number(row.net_balance),
+      totalPaid: Number(row.total_paid),
+      totalOwed: Number(row.total_owed),
+    }));
   },
 };
