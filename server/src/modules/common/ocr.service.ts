@@ -70,7 +70,7 @@ export class OCRService {
       };
     } catch (error) {
       this.logger?.error({ err: error }, "TabScanner OCR extraction failed");
-      throw new Error("Failed to extract text from receipt");
+      throw new Error("Failed to extract text from receipt", { cause: error });
     }
   }
 
@@ -311,7 +311,7 @@ export class OCRService {
         // Remove leading quantities like "2x", "3 x "
         .replace(/^\d+\s*[x×]\s*/i, "")
         // Remove leading bullet/dash markers
-        .replace(/^[•*\-]+\s*/, "")
+        .replace(/^[-•*]+\s*/, "")
         // Remove trailing price fragments that leaked into the name
         .replace(/\s+\d+[.,]\d{2}\s*$/, "")
         // Collapse multiple spaces

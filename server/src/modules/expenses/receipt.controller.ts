@@ -2,7 +2,6 @@ import type { NextFunction, Request, Response } from "express";
 import { getAuthenticatedUserId } from "../../middleware/require-auth.js";
 import { assertGroupMember, parsePositiveInt, parseSubjectUserId } from "../common/authorization.js";
 import { receiptService } from "./receipt.service.js";
-import { ReceiptAssignmentInputSchema } from "./receipt.schemas.js";
 import { expensesRepository } from "./expenses.repository.js";
 import { badRequest } from "../../utils/errors.js";
 import { broadcastGroupChange } from "../realtime/realtime-hub.js";
