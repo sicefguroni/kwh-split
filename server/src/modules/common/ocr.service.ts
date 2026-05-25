@@ -26,6 +26,82 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function cleanItemName(name: string): string {
+  return (
+    name
+      .replace(/^\d+\s*[x×]\s*/i, "")
+      .replace(/^[-•*]+\s*/, "")
+      .replace(/\s+\d+[.,]\d{2}\s*$/, "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+  );
+}
+
+export function isSummaryLine(name: string): boolean {
+  const lower = name.toLowerCase().trim();
+
+  const containsPatterns = [
+    /v[ao]t/,
+    /v[.,]?a[.,]?t/,
+    /\bvt\b/,
+    /\bsales\b/,
+    /tax/,
+    /service\s*charge/,
+    /svc\s*charge/,
+    /s\.?c\.?\s*charge/,
+    /gratuity/,
+    /surcharge/,
+    /sub\s*-?\s*total/,
+    /grand\s*total/,
+    /net\s*(total|amount)/,
+    /gross\s*(total|amount)/,
+    /total\s*(amount|due|sale)/,
+    /amount\s*(due|paid|tendered)/,
+    /balance\s*due/,
+    /withholding/,
+    /excise/,
+  ];
+
+  if (containsPatterns.some((p) => p.test(lower))) {
+    return true;
+  }
+
+  const exactPatterns = [
+    /^total$/,
+    /^change$/,
+    /^cash$/,
+    /^payment$/,
+    /^rounding$/,
+    /^tip$/,
+    /^discount$/,
+    /^balance$/,
+  ];
+
+  if (exactPatterns.some((p) => p.test(lower))) {
+    return true;
+  }
+
+  if (/^\d+%\s/.test(lower)) {
+    return true;
+  }
+
+  const prefixPatterns = [
+    /^less\s/,
+    /^sc[\s/]/,
+    /^pwd[\s/]/,
+    /^senior/,
+    /^disc[\s.]/,
+    /^total\s/,
+    /^net\s/,
+    /^gross\s/,
+    /^exempt\s/,
+    /^zero[\s-]?rated/,
+    /^non[\s-]?v/,
+  ];
+
+  return prefixPatterns.some((p) => p.test(lower));
+}
+
 export class OCRService {
   private logger: Logger | undefined;
   private apiKey: string;
@@ -250,7 +326,7 @@ export class OCRService {
     const extracted = lineItems
       .filter((item) => item.lineTotal > 0 && (item.descClean || item.desc))
       .map((item) => ({
-        name: this.cleanItemName(item.descClean || item.desc || ""),
+        name: cleanItemName(item.descClean || item.desc || ""),
         price: item.lineTotal,
         confidence: this.calculateItemConfidence(item, result),
         rawText: item.desc || "",
@@ -284,7 +360,7 @@ export class OCRService {
     });
 
     // Filter out items that look like summary lines
-    const filtered = deduped.filter((item) => !this.isSummaryLine(item.name));
+    const filtered = deduped.filter((item) => !isSummaryLine(item.name));
 
     // Cross-validate: if TabScanner reported a total, check if our items are reasonable
     if (result.total && result.total > 0 && filtered.length > 0) {
@@ -303,88 +379,6 @@ export class OCRService {
     }
 
     return filtered;
-  }
-
-  private cleanItemName(name: string): string {
-    return (
-      name
-        // Remove leading quantities like "2x", "3 x "
-        .replace(/^\d+\s*[x×]\s*/i, "")
-        // Remove leading bullet/dash markers
-        .replace(/^[-•*]+\s*/, "")
-        // Remove trailing price fragments that leaked into the name
-        .replace(/\s+\d+[.,]\d{2}\s*$/, "")
-        // Collapse multiple spaces
-        .replace(/\s{2,}/g, " ")
-        .trim()
-    );
-  }
-
-  private isSummaryLine(name: string): boolean {
-    const lower = name.toLowerCase().trim();
-
-    // Fuzzy-match patterns that catch OCR misreadings (e.g. VAABILE → VATABLE, VT → VAT)
-    const containsPatterns = [
-      /v[ao]t/,               // vat, vot — also catches OCR garbled "vatable"
-      /v[.,]?a[.,]?t/,        // v.a.t, v,a,t
-      /\bvt\b/,               // VT (shorthand for VAT)
-      /\bsales\b/,            // "XXX SALES" lines are always tax summaries on receipts
-      /tax/,
-      /service\s*charge/,
-      /svc\s*charge/,
-      /s\.?c\.?\s*charge/,
-      /gratuity/,
-      /surcharge/,
-      /sub\s*-?\s*total/,
-      /grand\s*total/,
-      /net\s*(total|amount)/,
-      /gross\s*(total|amount)/,
-      /total\s*(amount|due|sale)/,
-      /amount\s*(due|paid|tendered)/,
-      /balance\s*due/,
-      /withholding/,
-      /excise/,
-    ];
-
-    if (containsPatterns.some((p) => p.test(lower))) {
-      return true;
-    }
-
-    const exactPatterns = [
-      /^total$/,
-      /^change$/,
-      /^cash$/,
-      /^payment$/,
-      /^rounding$/,
-      /^tip$/,
-      /^discount$/,
-      /^balance$/,
-    ];
-
-    if (exactPatterns.some((p) => p.test(lower))) {
-      return true;
-    }
-
-    // Percentage-prefixed lines like "12% VT", "10% SC" are always fees, not products
-    if (/^\d+%\s/.test(lower)) {
-      return true;
-    }
-
-    const prefixPatterns = [
-      /^less\s/,
-      /^sc[\s/]/,
-      /^pwd[\s/]/,
-      /^senior/,
-      /^disc[\s.]/,
-      /^total\s/,
-      /^net\s/,
-      /^gross\s/,
-      /^exempt\s/,
-      /^zero[\s-]?rated/,
-      /^non[\s-]?v/,
-    ];
-
-    return prefixPatterns.some((p) => p.test(lower));
   }
 
   /**
