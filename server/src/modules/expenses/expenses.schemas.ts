@@ -9,6 +9,11 @@ export const SplitEntrySchema = z.object({
   amount: z.coerce.number().positive().optional(),
 });
 
+export const PayerEntrySchema = z.object({
+  userId: z.coerce.number().int().positive(),
+  amountPaid: z.coerce.number().positive(),
+});
+
 export const MemberDiscountTypeSchema = z.enum(["none", "pwd", "senior"]);
 
 export const MemberDiscountSchema = z.object({
@@ -27,6 +32,7 @@ export const ExpenseWriteSchema = z.object({
   titleDescription: z.string().trim().min(1).max(255),
   totalAmount: z.coerce.number().positive(),
   paidByUserId: z.coerce.number().int().positive().optional(),
+  payerUserIds: z.array(PayerEntrySchema).min(1).optional(),
   saleDate: z.string().date(),
   taxAmount: z.coerce.number().min(0).default(0),
   tipAmount: z.coerce.number().min(0).default(0),
@@ -38,6 +44,27 @@ export const ExpenseWriteSchema = z.object({
   receiptItems: z.array(ReceiptItemSchema).optional(),
   memberDiscounts: z.array(MemberDiscountSchema).optional(),
 }).superRefine((value, ctx) => {
+  // Validate payerUserIds if provided
+  if (value.payerUserIds?.length) {
+    const uniquePayers = new Set(value.payerUserIds.map(p => p.userId));
+    if (uniquePayers.size !== value.payerUserIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "payerUserIds must not contain duplicate userId entries",
+        path: ["payerUserIds"],
+      });
+      return;
+    }
+    const sumPaid = value.payerUserIds.reduce((s, p) => s + p.amountPaid, 0);
+    if (Math.abs(sumPaid - value.totalAmount) > 0.01) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `payerUserIds sum (${sumPaid}) must equal totalAmount (${value.totalAmount})`,
+        path: ["payerUserIds"],
+      });
+      return;
+    }
+  }
   if (!value.memberDiscounts?.length) return;
   const seen = new Set<number>();
   for (const discount of value.memberDiscounts) {

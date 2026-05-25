@@ -12,6 +12,7 @@ interface PublicExpenseSplit {
   id: string;
   userId: string;
   amountOwed: number;
+  originalAmount: number | null;
   percentage: number | null;
   share: number | null;
   isSettled: boolean;
@@ -31,12 +32,18 @@ interface PublicMemberDiscount {
   ratePercent: number;
 }
 
+export interface PublicPayerEntry {
+  userId: string;
+  amountPaid: number;
+}
+
 export interface PublicExpense {
   id: string;
   groupId: string;
   titleDescription: string;
   totalAmount: number;
   paidByUserId: string | null;
+  payerAmounts: PublicPayerEntry[];
   saleDate: string;
   taxAmount: number;
   tipAmount: number;
@@ -53,10 +60,11 @@ export interface PublicExpense {
 const toPublicExpense = async (
   record: Awaited<ReturnType<typeof expensesRepository.listByGroup>>[number],
 ): Promise<PublicExpense> => {
-  const [splits, items, memberDiscounts] = await Promise.all([
+  const [splits, items, memberDiscounts, payers] = await Promise.all([
     expensesRepository.listSplits(record.expense_id),
     expensesRepository.listReceiptItems(record.expense_id),
     expensesRepository.listMemberDiscounts(record.expense_id),
+    expensesRepository.listPayerEntries(record.expense_id),
   ]);
   return {
     id: String(record.expense_id),
@@ -64,6 +72,10 @@ const toPublicExpense = async (
     titleDescription: record.title_description,
     totalAmount: Number(record.total_amount),
     paidByUserId: record.payer_user_id ? String(record.payer_user_id) : null,
+    payerAmounts: payers.map((p) => ({
+      userId: String(p.user_id),
+      amountPaid: Number(p.amount_paid),
+    })),
     saleDate: record.sale_date,
     taxAmount: Number(record.tax_amount),
     tipAmount: Number(record.tip_amount),
@@ -74,6 +86,7 @@ const toPublicExpense = async (
       id: String(split.split_id),
       userId: String(split.user_id),
       amountOwed: Number(split.amount_owed),
+      originalAmount: split.original_amount !== null ? Number(split.original_amount) : null,
       percentage: split.percentage !== null ? Number(split.percentage) : null,
       share: split.share !== null ? Number(split.share) : null,
       isSettled: split.is_settled,
@@ -100,10 +113,15 @@ export const expensesService = {
     await assertGroupMember(requesterUserId, input.groupId);
     const groupMemberIds = await expensesRepository.listGroupMemberIds(input.groupId);
     const calculated = calculateExpenseDetails(input, groupMemberIds);
+    // Resolve payers: if payerUserIds not provided, fallback to paidByUserId or requester
+    const resolvedPayers = input.payerUserIds ?? [
+      { userId: input.paidByUserId ?? requesterUserId, amountPaid: input.totalAmount },
+    ];
     const expenseId = await expensesRepository.createWithDetails({
       expense: {
         ...input,
         paidByUserId: input.paidByUserId ?? requesterUserId,
+        payerUserIds: resolvedPayers,
       },
       splits: calculated.splits,
       receiptItems: calculated.receiptItems,
@@ -153,11 +171,15 @@ export const expensesService = {
     }
     const groupMemberIds = await expensesRepository.listGroupMemberIds(input.groupId);
     const calculated = calculateExpenseDetails(input, groupMemberIds);
+    const resolvedPayers = input.payerUserIds ?? [
+      { userId: input.paidByUserId ?? requesterUserId, amountPaid: input.totalAmount },
+    ];
     const updated = await expensesRepository.updateWithDetails({
       expenseId,
       expense: {
         ...input,
         paidByUserId: input.paidByUserId ?? requesterUserId,
+        payerUserIds: resolvedPayers,
       },
       splits: calculated.splits,
       receiptItems: calculated.receiptItems,
