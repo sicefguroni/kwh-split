@@ -1,13 +1,3 @@
-output "alb_dns_name" {
-  value       = aws_lb.main.dns_name
-  description = "ALB DNS (HTTP :80) — point CloudFront or DNS here after replacing placeholder tasks."
-}
-
-output "api_health_url" {
-  value       = "http://${aws_lb.main.dns_name}/api/health"
-  description = "Smoke-test URL after terraform apply and ECS tasks are healthy"
-}
-
 output "site_url" {
   value       = local.public_site_url
   description = "Public SPA URL (after deploy:site uploads client/dist)"
@@ -33,43 +23,38 @@ output "cloudfront_distribution_id" {
   description = "Use for cache invalidation after deploy:site"
 }
 
-output "ecr_api_repository_url" {
-  value = aws_ecr_repository.api.repository_url
-}
-
-output "ecr_worker_repository_url" {
-  value = aws_ecr_repository.worker.repository_url
-}
-
 output "rds_endpoint" {
-  value       = aws_rds_cluster.main.endpoint
-  description = "PostgreSQL hostname for DATABASE_URL"
+  value       = aws_db_instance.main.endpoint
+  description = "PostgreSQL hostname"
+  sensitive   = true
 }
 
-output "rds_security_group_id" {
-  value       = aws_security_group.rds.id
-  description = "RDS security group — use for temporary migrate access from your IP (see server/docs/database.md)"
+output "ec2_eip" {
+  value       = aws_eip.ec2.public_ip
+  description = "Elastic IP of the EC2 instance (API backend)"
 }
 
-output "redis_primary_endpoint" {
-  value       = aws_elasticache_replication_group.redis.primary_endpoint_address
-  description = "Redis hostname for REDIS_URL (add redis:// prefix in app)"
+output "ec2_instance_id" {
+  value       = aws_instance.main.id
+  description = "EC2 instance ID"
 }
 
-output "ecs_cluster_name" {
-  value = aws_ecs_cluster.main.name
+output "ssh_private_key" {
+  value       = tls_private_key.ec2.private_key_pem
+  description = "SSH private key for EC2 access (save to .pem, chmod 400)"
+  sensitive   = true
+}
+
+output "ec2_security_group_id" {
+  value       = aws_security_group.ec2.id
+  description = "EC2 security group"
 }
 
 output "vpc_id" {
   value = aws_vpc.main.id
 }
 
-output "ecs_public_subnet_ids" {
-  value       = aws_subnet.public[*].id
-  description = "Subnets used by ECS services (Fargate) — same subnets work for run-task migration jobs"
-}
-
-output "ecs_tasks_security_group_id" {
-  value       = aws_security_group.ecs.id
-  description = "Security group attached to ECS tasks — use with run-task so the task can reach RDS and Redis"
+output "direct_health_url" {
+  value       = "http://${aws_eip.ec2.public_ip}:4000/api/health"
+  description = "Direct health check URL (bypasses CloudFront)"
 }

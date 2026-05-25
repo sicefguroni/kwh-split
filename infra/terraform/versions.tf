@@ -2,14 +2,12 @@ terraform {
   required_version = ">= 1.5.0"
   required_providers {
     aws = {
-      source = "hashicorp/aws"
-      # 6.23+ reads the same `aws login` / console credential cache as Terraform 1.14's S3 backend (LoginProvider).
-      # Provider v5 only sees the legacy chain and falls through to EC2 IMDS on a laptop.
+      source  = "hashicorp/aws"
       version = ">= 6.23.0, < 7.0.0"
     }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.4"
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.0"
     }
   }
 
@@ -23,14 +21,16 @@ terraform {
 }
 
 provider "aws" {
-  region = var.aws_region
-  # Explicit profile avoids "IMDS only" when the process does not inherit AWS_PROFILE (some GUIs / wrappers).
+  region  = var.aws_region
   profile = trimspace(var.aws_profile) != "" ? var.aws_profile : null
 }
 
-# ACM for CloudFront custom domains must be issued in us-east-1 (AWS requirement). App stack stays in aws_region.
 provider "aws" {
   alias   = "us_east_1"
   region  = "us-east-1"
   profile = trimspace(var.aws_profile) != "" ? var.aws_profile : null
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }
