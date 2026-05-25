@@ -55,6 +55,7 @@ jobs:
 
       - name: Deploy server to EC2
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq rsync
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/split-key.pem
           chmod 600 ~/.ssh/split-key.pem
