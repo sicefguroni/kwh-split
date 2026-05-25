@@ -2,9 +2,15 @@ export interface ApiExpenseSplit {
   id: string;
   userId: string;
   amountOwed: number;
+  originalAmount: number | null;
   percentage: number | null;
   share: number | null;
   isSettled: boolean;
+}
+
+export interface ApiPayerEntry {
+  userId: string;
+  amountPaid: number;
 }
 
 export interface ApiExpense {
@@ -13,6 +19,7 @@ export interface ApiExpense {
   titleDescription: string;
   totalAmount: number;
   paidByUserId: string | null;
+  payerAmounts: ApiPayerEntry[];
   saleDate: string;
   taxAmount: number;
   tipAmount: number;
