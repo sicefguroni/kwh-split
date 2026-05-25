@@ -1,110 +1,79 @@
-name: Deploy to Dev
+name: CI/CD
 
 on:
   push:
-    branches:
-      - dev
+    branches: [dev]
+  pull_request:
+    branches: [dev]
 
 env:
   AWS_REGION: ap-southeast-1
-  TF_VAR_environment: dev
-  TF_VAR_project: kwh-split
-  # --- Secrets (from GitHub repository settings) ---
-  TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
-  TF_VAR_jwt_secret: ${{ secrets.TF_VAR_JWT_SECRET }}
-  TF_VAR_smtp_from: ${{ secrets.TF_VAR_SMTP_FROM }}
-  TF_VAR_google_client_id: ${{ secrets.TF_VAR_GOOGLE_CLIENT_ID }}
-  TF_VAR_google_client_secret: ${{ secrets.TF_VAR_GOOGLE_CLIENT_SECRET }}
-  TF_VAR_ocr_api_key: ${{ secrets.TF_VAR_OCR_API_KEY }}
-  # --- Custom domain (must match local tfvars to prevent CloudFront destroy/recreate) ---
-  TF_VAR_site_domain: kwhsplit.app
-  TF_VAR_site_domain_aliases: '["www.kwhsplit.app"]'
-  TF_VAR_route53_zone_id: Z1029435AJALTOR9P6FP
-  TF_VAR_cloudfront_price_class: PriceClass_All
 
 jobs:
-  build-and-deploy:
+  check:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
         with:
           version: 9.15.4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
 
-      - name: Install dependencies
-        run: pnpm install
+  build-and-deploy:
+    if: github.event_name == 'push' && github.ref_name == 'dev'
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -r run build
 
-      - name: Build Web & Server
-        run: pnpm -r run build
-
-      - name: Build Lambdas
-        run: node server/src/lambdas/build.js
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        working-directory: infra/terraform
-        run: terraform init
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build, tag, and push API image to ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: kwh-split-dev-api
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build --target api -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-      - name: Build, tag, and push Worker image to ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: kwh-split-dev-worker
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build --target worker -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-      - name: Terraform Apply
-        working-directory: infra/terraform
-        env:
-          TF_VAR_api_image_tag: ${{ github.sha }}
-          TF_VAR_worker_image_tag: ${{ github.sha }}
-        run: terraform apply -auto-approve
-
-      - name: Get Terraform Outputs
-        id: tf-outputs
-        working-directory: infra/terraform
-        run: |
-          echo "site_bucket=$(terraform output -raw site_bucket)" >> $GITHUB_OUTPUT
-          echo "cloudfront_distribution_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
-
       - name: Deploy static site to S3
-        run: aws s3 sync client/dist "s3://${{ steps.tf-outputs.outputs.site_bucket }}/" --delete
+        run: aws s3 sync client/dist s3://kwh-split-dev-site-646385694637/ --delete
 
-      - name: Invalidate CloudFront cache
+      - name: Invalidate CloudFront
+        run: aws cloudfront create-invalidation --distribution-id E2K9SXH3VS1V4X --paths "/*"
+
+      - name: Deploy server to EC2
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "${{ steps.tf-outputs.outputs.cloudfront_distribution_id }}" \
-            --paths "/*"
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/split-key.pem
+          chmod 600 ~/.ssh/split-key.pem
+          ssh-keyscan -H 18.138.220.212 >> ~/.ssh/known_hosts
+
+          rsync -avz --delete -e "ssh -i ~/.ssh/split-key.pem" \
+            server/dist/ \
+            ec2-user@18.138.220.212:/home/ec2-user/app/server/dist/
+
+          rsync -avz -e "ssh -i ~/.ssh/split-key.pem" \
+            server/package.json \
+            ec2-user@18.138.220.212:/home/ec2-user/app/server/package.json
+
+          ssh -i ~/.ssh/split-key.pem ec2-user@18.138.220.212 << 'EOF'
+            set -e
+            cd /home/ec2-user/app/server
+            pnpm install --prod
+            node dist/db/migrate.js
+            sudo systemctl daemon-reload
+            sudo systemctl restart split-api
+            sudo systemctl restart split-worker
+          EOF
