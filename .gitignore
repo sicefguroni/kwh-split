@@ -48,6 +48,11 @@ infra/terraform/*.auto.tfvars
 # Lockfiles (pnpm is canonical for this monorepo)
 package-lock.json
 
+# Project docs (agent reference, design plans)
+AGENTS.md
+TERAX.md
+plan.md
+
 # OS / editor
 .DS_Store
 *.suo
