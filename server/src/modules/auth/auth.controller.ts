@@ -13,6 +13,10 @@ import { parsePositiveInt } from "../common/authorization.js";
 type TypedBody<T> = Request<unknown, unknown, T>;
 const OAUTH_STATE_COOKIE = "split_oauth_state";
 
+const getOriginFromRequest = (req: Request): string => {
+  return `https://${req.get("host")}`;
+};
+
 const oauthStateCookieOptions = () => ({
   httpOnly: true,
   secure: env.COOKIE_SECURE,
@@ -35,9 +39,11 @@ const parseRedirectPath = (value: unknown): string | undefined => {
 const beginOauth = async (
   provider: AuthProvider,
   redirectPath: string | undefined,
+  req: Request,
   res: Response,
 ): Promise<void> => {
-  const { authorizationUrl, stateToken } = await authService.createProviderStartUrl(provider, redirectPath);
+  const origin = getOriginFromRequest(req);
+  const { authorizationUrl, stateToken } = await authService.createProviderStartUrl(provider, redirectPath, origin);
   res.cookie(OAUTH_STATE_COOKIE, stateToken, oauthStateCookieOptions());
   res.redirect(302, authorizationUrl);
 };
@@ -47,6 +53,7 @@ const finishOauth = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
+  const origin = getOriginFromRequest(req);
   const stateToken =
     typeof req.cookies?.[OAUTH_STATE_COOKIE] === "string" ? req.cookies[OAUTH_STATE_COOKIE] : "";
   const redirectPathFromStateToken = stateToken
@@ -63,7 +70,7 @@ const finishOauth = async (
       ok: false,
       code: providerError,
       ...(redirectPathFromStateToken ? { redirectPath: redirectPathFromStateToken } : {}),
-    }));
+    }, origin));
     return;
   }
   if (!code || !state || !stateToken) {
@@ -71,7 +78,7 @@ const finishOauth = async (
       ok: false,
       code: "missing_code_or_state",
       ...(redirectPathFromStateToken ? { redirectPath: redirectPathFromStateToken } : {}),
-    }));
+    }, origin));
     return;
   }
 
@@ -81,12 +88,13 @@ const finishOauth = async (
       code,
       returnedState: state,
       stateToken,
+      origin,
     });
     setAuthCookies(res, result.tokens);
     res.redirect(authService.buildOAuthResultRedirect({
       ok: true,
       ...(result.redirectPath ? { redirectPath: result.redirectPath } : {}),
-    }));
+    }, origin));
   } catch (error) {
     const callbackErrorCode =
       error instanceof Error && "code" in error && typeof error.code === "string"
@@ -96,7 +104,7 @@ const finishOauth = async (
       ok: false,
       code: callbackErrorCode,
       ...(redirectPathFromStateToken ? { redirectPath: redirectPathFromStateToken } : {}),
-    }));
+    }, origin));
   }
 };
 
@@ -201,8 +209,9 @@ export const authController = {
 
   async oauthGoogleStart(req: Request, res: Response): Promise<void> {
     try {
-      await beginOauth("google", parseRedirectPath(req.query.redirect), res);
+      await beginOauth("google", parseRedirectPath(req.query.redirect), req, res);
     } catch (error) {
+      const origin = getOriginFromRequest(req);
       const code =
         error instanceof Error && "code" in error && typeof error.code === "string"
           ? error.code
@@ -212,7 +221,7 @@ export const authController = {
         ok: false,
         code,
         ...(redirectPath ? { redirectPath } : {}),
-      }));
+      }, origin));
     }
   },
 
