@@ -7,6 +7,7 @@ import { ToastProvider, ToastContainer } from "@/components/ui/toast";
 import { ProtectedRoute } from "@/routes/protected-route";
 import { PublicOnlyRoute } from "@/routes/public-only-route";
 import { AuthScreenFallback } from "@/components/layout/auth-screen-fallback";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LoginPage = lazy(() => import("@/pages/login"));
@@ -26,7 +27,8 @@ export function App() {
       <ToastProvider>
         <RealtimeUpdatesBridge />
         <BrowserRouter>
-          <Suspense fallback={<AuthScreenFallback />}>
+          <ErrorBoundary>
+            <Suspense fallback={<AuthScreenFallback />}>
             <Routes>
               <Route element={<PublicOnlyRoute />}>
                 <Route path="/" element={<LandingPage />} />
@@ -52,6 +54,7 @@ export function App() {
               <Route path="*" element={<Navigate to="/404" replace />} />
             </Routes>
           </Suspense>
+          </ErrorBoundary>
         </BrowserRouter>
         <ToastContainer />
       </ToastProvider>
