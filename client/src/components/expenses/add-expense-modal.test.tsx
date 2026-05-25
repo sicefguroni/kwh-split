@@ -22,44 +22,45 @@ function renderModal() {
   );
 }
 
-describe("AddExpenseModal exact split", () => {
-  it("shows balance controls in exact mode", () => {
+describe("AddExpenseModal", () => {
+  it("renders step 1 with expense name and amount fields", () => {
+    renderModal();
+    expect(screen.getByLabelText("Expense name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Total amount")).toBeInTheDocument();
+    expect(screen.getByText("Who paid?")).toBeInTheDocument();
+  });
+
+  it("adds payer rows and shows remove buttons", () => {
+    renderModal();
+
+    const addBtn = screen.getByRole("button", { name: /Add payer/i });
+    fireEvent.click(addBtn);
+
+    const removeButtons = screen.getAllByRole("button", { name: /Remove payer/i });
+    expect(removeButtons.length).toBe(2);
+  });
+
+  it("transitions to step 2 after filling basic info", () => {
     renderModal();
 
     fireEvent.change(screen.getByLabelText("Expense name"), { target: { value: "Dinner" } });
-    fireEvent.change(screen.getByLabelText("Expense amount"), { target: { value: "90" } });
+    fireEvent.change(screen.getByLabelText("Total amount"), { target: { value: "90" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-    fireEvent.change(screen.getByLabelText("Split type"), { target: { value: "exact" } });
-
-    expect(screen.getByRole("button", { name: "Balance Amounts" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /Lock .*|Unlock .*/ }).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Split type")).toBeInTheDocument();
+    expect(screen.getByText("Member allocations")).toBeInTheDocument();
   });
 
-  it("locks a member amount input when toggled", () => {
+  it("opens split type menu on click and shows options", async () => {
     renderModal();
 
-    fireEvent.change(screen.getByLabelText("Expense name"), { target: { value: "Hotel" } });
-    fireEvent.change(screen.getByLabelText("Expense amount"), { target: { value: "300" } });
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-    fireEvent.change(screen.getByLabelText("Split type"), { target: { value: "exact" } });
-
-    const lockButton = screen.getByRole("button", { name: "Lock Alice" });
-    fireEvent.click(lockButton);
-
-    const amountInputs = screen.getAllByPlaceholderText("0.00") as HTMLInputElement[];
-    expect(amountInputs[0]?.disabled).toBe(true);
-  });
-
-  it("shows and updates member discount selector", () => {
-    renderModal();
-
-    fireEvent.change(screen.getByLabelText("Expense name"), { target: { value: "Groceries" } });
-    fireEvent.change(screen.getByLabelText("Expense amount"), { target: { value: "300" } });
+    fireEvent.change(screen.getByLabelText("Expense name"), { target: { value: "Dinner" } });
+    fireEvent.change(screen.getByLabelText("Total amount"), { target: { value: "90" } });
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
-    const discountSelect = screen.getByLabelText("Discount type for Alice");
-    fireEvent.change(discountSelect, { target: { value: "pwd" } });
-    expect((discountSelect as HTMLSelectElement).value).toBe("pwd");
+    fireEvent.click(screen.getByLabelText("Split type"));
+
+    const options = await screen.findAllByRole("option");
+    expect(options.length).toBeGreaterThanOrEqual(2);
   });
 });
