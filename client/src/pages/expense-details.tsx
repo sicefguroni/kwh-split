@@ -9,6 +9,7 @@ import { useGroupQuery } from "@/features/groups/use-groups";
 import { useExpensesQuery, useUpdateExpenseMutation } from "@/features/expenses/use-expenses";
 import { useMarkSettlementPaidMutation, useSettlementHistoryQuery } from "@/features/settlements/use-settlements";
 import { resolveViewerMemberId } from "@/lib/group-money";
+import { ApiError } from "@/lib/api-client";
 import { useToast } from "@/components/ui/toast";
 import type { GroupData, GroupExpense } from "@/features/groups/domain";
 
@@ -59,6 +60,10 @@ export default function ExpenseDetailsPage() {
           ...(split.share != null && { share: split.share }),
           isSettled: split.isSettled,
         })),
+        payerAmounts: expense.payerAmounts?.map((p) => ({
+          userId: p.userId,
+          amountPaid: p.amountPaid,
+        })),
         receiptItems: (expense.receiptItems ?? []).map((item) => ({
           id: item.id,
           itemName: item.itemName,
@@ -83,36 +88,51 @@ export default function ExpenseDetailsPage() {
     () => (group ? resolveViewerMemberId(group, user?.name, user?.id) : undefined),
     [group, user?.name, user?.id],
   );
-  const isExpensePayer = viewerId !== undefined && expense?.paidBy === viewerId;
+
+
+  const paidByNames = useMemo(() => {
+    if (!expense || !group) return "Unknown";
+    if (expense.payerAmounts?.length) {
+      return expense.payerAmounts
+        .map((p) => group.members.find((m) => m.id === p.userId)?.name ?? "Unknown")
+        .join(", ");
+    }
+    return group.members.find((m) => m.id === expense.paidBy)?.name ?? "Unknown";
+  }, [expense, group]);
 
   const toExpensePayload = (expense: GroupExpense) => ({
-  groupId: Number(groupId),
-  titleDescription: expense.name,
-  totalAmount: expense.amount,
-  ...(expense.paidBy ? { paidByUserId: Number(expense.paidBy) } : {}),
-  saleDate: expense.date,
-  note: expense.note ?? "",
-  category: expense.category ?? "General",
-  taxAmount: 0,
-  tipAmount: 0,
-  splitType: (expense.splitType ?? "exact") as "equal" | "percentage" | "shares" | "exact" | "itemized",
-  participantUserIds: expense.splits.map((split) => Number(split.memberId)),
-  splits: expense.splits.map((split) => ({
-    userId: Number(split.memberId),
-    amount: split.amount,
-    ...(split.percentage != null && { percentage: split.percentage }),
-    ...(split.share != null && { share: split.share }),
-  })),
-  receiptItems: (expense.receiptItems ?? []).map((item) => ({
-    itemName: item.itemName,
-    price: item.price,
-    assignedUserIds: item.assignedUserIds.map(Number),
-  })),
-  memberDiscounts: (expense.memberDiscounts ?? []).map((entry) => ({
-    userId: Number(entry.memberId),
-    type: entry.type,
-  })),
-});
+    groupId: Number(groupId),
+    titleDescription: expense.name,
+    totalAmount: expense.amount,
+    ...(expense.paidBy ? { paidByUserId: Number(expense.paidBy) } : {}),
+    ...(expense.payerAmounts?.length
+      ? { payerUserIds: expense.payerAmounts.map((p) => ({ userId: Number(p.userId), amountPaid: p.amountPaid })) }
+      : expense.paidBy
+        ? { payerUserIds: [{ userId: Number(expense.paidBy), amountPaid: expense.amount }] }
+        : {}),
+    saleDate: expense.date,
+    note: expense.note ?? "",
+    category: expense.category ?? "General",
+    taxAmount: 0,
+    tipAmount: 0,
+    splitType: (expense.splitType ?? "exact") as "equal" | "percentage" | "shares" | "exact" | "itemized",
+    participantUserIds: expense.splits.map((split) => Number(split.memberId)),
+    splits: expense.splits.map((split) => ({
+      userId: Number(split.memberId),
+      amount: split.amount,
+      ...(split.percentage != null && { percentage: split.percentage }),
+      ...(split.share != null && { share: split.share }),
+    })),
+    receiptItems: (expense.receiptItems ?? []).map((item) => ({
+      itemName: item.itemName,
+      price: item.price,
+      assignedUserIds: item.assignedUserIds.map(Number),
+    })),
+    memberDiscounts: (expense.memberDiscounts ?? []).map((entry) => ({
+      userId: Number(entry.memberId),
+      type: entry.type,
+    })),
+  });
 
   const memberSplits = useMemo(() => {
     if (!expense || !group) return [];
@@ -128,11 +148,6 @@ export default function ExpenseDetailsPage() {
       };
     });
   }, [expense, group]);
-
-  const paidByMember = useMemo(
-    () => group?.members.find((m) => m.id === expense?.paidBy),
-    [group, expense],
-  );
 
   const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; payerMemberId: string | null }>({
     isOpen: false,
@@ -151,19 +166,24 @@ export default function ExpenseDetailsPage() {
   };
 
   const handleConfirmPayment = async (amount: string) => {
-    if (!expense || !viewerId || !expense.paidBy || !paymentModal.payerMemberId) return;
+    if (!expense || !viewerId || !paymentModal.payerMemberId) return;
     const splitAmount = Number(amount);
     if (splitAmount <= 0) return;
     const payerMemberId = paymentModal.payerMemberId;
+
     try {
       await markPaidMutation.mutateAsync({
         fromUserId: Number(payerMemberId),
-        toUserId: Number(expense.paidBy),
+        toUserId: Number(viewerId),
         amount: splitAmount,
       });
       addToast("Payment recorded successfully", "success");
-    } catch {
-      addToast("Failed to record payment", "error");
+    } catch (error) {
+      if (error instanceof ApiError) {
+        addToast(error.message, "error");
+      } else {
+        addToast("Failed to record payment", "error");
+      }
     } finally {
       closePaymentModal();
     }
@@ -218,15 +238,33 @@ export default function ExpenseDetailsPage() {
     year: "numeric",
   });
 
+  const payerIds = useMemo(() => {
+    if (!expense) return [];
+    return expense.payerAmounts?.length
+      ? expense.payerAmounts.map((p) => p.userId)
+      : expense.paidBy ? [expense.paidBy] : [];
+  }, [expense]);
+
+  const viewerNet = useMemo(() => {
+    if (!expense || viewerId === undefined) return 0;
+    const paid = expense.payerAmounts?.find((p) => p.userId === viewerId)?.amountPaid
+      ?? (viewerId === expense.paidBy ? expense.amount : 0);
+    const split = expense.splits.find((s) => s.memberId === viewerId)?.amount ?? 0;
+    return paid - split;
+  }, [expense, viewerId]);
+
   const isFullySettled = expense.splits.every(
-    (split) => split.memberId === expense.paidBy || split.isSettled,
+    (split) => payerIds.includes(split.memberId) || split.isSettled,
   );
-  const canMarkPaid = isExpensePayer;
+  const canMarkPaid = viewerNet > 0.005;
 
   const modalMemberSplit = paymentModal.payerMemberId
     ? expense.splits.find((s) => s.memberId === paymentModal.payerMemberId)
     : null;
-  const modalRemainingAmount = modalMemberSplit?.amount ?? 0;
+  const modalAmountPaid = paymentModal.payerMemberId
+    ? expense.payerAmounts?.find((p) => p.userId === paymentModal.payerMemberId)?.amountPaid ?? 0
+    : 0;
+  const modalRemainingAmount = Math.max(0, (modalMemberSplit?.amount ?? 0) - modalAmountPaid);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-12">
@@ -263,7 +301,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
                 {expense.currency} {expense.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div className="text-lg text-primary-foreground/80">
-                {isFullySettled ? "Fully settled" : `${expense.currency} ${expense.splits.filter((s) => s.memberId !== expense.paidBy && !s.isSettled).reduce((sum, s) => sum + s.amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unsettled`}
+                {isFullySettled ? "Fully settled" : `${expense.currency} ${expense.splits.filter((s) => !payerIds.includes(s.memberId) && !s.isSettled).reduce((sum, s) => sum + s.amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} unsettled`}
               </div>
             </div>
           </section>
@@ -283,7 +321,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
           <MetaRow
             icon={<UserIcon className="h-4 w-4" />}
             label="Paid by"
-            value={paidByMember?.name ?? "Unknown"}
+            value={paidByNames}
           />
           <MetaRow
             icon={<Calendar className="h-4 w-4" />}
@@ -348,7 +386,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
           <ul className="space-y-2">
             {memberSplits.map((split) => {
               const isFullyPaid = split.isSettled;
-              const isPayer = split.memberId === expense.paidBy;
+              const isPayer = payerIds.includes(split.memberId);
 
               return (
                 <li
@@ -372,12 +410,18 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
 
                   {/* Right: amount + badge/button */}
                   <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className="text-sm font-bold text-ink-900">
-                      {expense.currency} {split.amount.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
+                    {(() => {
+                      const payerAmount = expense.payerAmounts?.find((p) => p.userId === split.memberId)?.amountPaid ?? 0;
+                      const remainingAmount = Math.max(0, split.amount - payerAmount);
+                      return (
+                        <span className="text-sm font-bold text-ink-900">
+                          {expense.currency} {remainingAmount.toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      );
+                    })()}
 
                     {isPayer && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-blue-900 text-white px-3 py-1.5 text-xs font-bold uppercase tracking-wide whitespace-nowrap">
@@ -389,17 +433,21 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
                         <BadgeCheck className="h-3.5 w-3.5" /> Paid
                       </span>
                     )}
-                    {canMarkPaid && !isPayer && !isFullyPaid && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openPaymentModal(split.memberId)}
-                        disabled={markPaidMutation.isPending}
-                        className="rounded-full h-7 px-3 py-1.5 text-xs font-semibold whitespace-nowrap"
-                      >
-                        Mark as paid
-                      </Button>
-                    )}
+                    {(() => {
+                      const payerAmount = expense.payerAmounts?.find((p) => p.userId === split.memberId)?.amountPaid ?? 0;
+                      const remainingAmount = Math.max(0, split.amount - payerAmount);
+                      return canMarkPaid && !isFullyPaid && remainingAmount > 0.005 && split.memberId !== viewerId ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openPaymentModal(split.memberId)}
+                          disabled={markPaidMutation.isPending}
+                          className="rounded-full h-7 px-3 py-1.5 text-xs font-semibold whitespace-nowrap"
+                        >
+                          Mark as paid
+                        </Button>
+                      ) : null;
+                    })()}
                   </div>
                 </li>
               );
@@ -441,8 +489,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
                       </p>
                     </div>
                     <p className="text-sm font-bold text-emerald-700">
-                      {expense.currency} ${" "}
-                      {entry.amountPaid.toLocaleString(undefined, {
+                      {expense.currency} {entry.amountPaid.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
@@ -458,10 +505,10 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
       {paymentModal.isOpen && paymentModal.payerMemberId && (
         <PaymentConfirmationModal
           memberName={group.members.find((m) => m.id === paymentModal.payerMemberId)?.name ?? "Unknown"}
-          payerName={paidByMember?.name ?? "Unknown"}
+          payerName={paidByNames}
           initialAmount={modalRemainingAmount.toFixed(2)}
           maxAmount={modalRemainingAmount.toFixed(2)}
-          amountPaid={"0.00"}
+           amountPaid={"0.00"}
           totalShare={(modalMemberSplit?.amount ?? 0).toFixed(2)}
           currency={group.currency}
           onConfirm={handleConfirmPayment}
@@ -478,7 +525,7 @@ className="rounded-3xl p-6 sm:p-8 text-white shadow-xl bg-[linear-gradient(135de
           }}
           onSubmit={handleEditExpense}
           initialData={selectedExpense}
-          members={group.members.filter((m) => m.isActive)}
+          members={group.members}
           currency={group.currency}
           groupName={group.name}
         />

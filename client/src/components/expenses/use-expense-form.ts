@@ -5,10 +5,12 @@ import {
   type MemberSplitInput,
   type SplitType,
 } from "./types";
+import type { PayerEntry } from "@/features/groups/domain";
 import {
   applyRoundingCorrection,
   buildDefaultSplitInputs,
   calculateDiscountAdjustedPreview,
+  calculateItemizedSplits,
   calculateSplits,
   generateExpenseId,
   rebalancePercentageSplitInputs,
@@ -17,12 +19,19 @@ import {
   validateExactSplitState,
 } from "./expense-utils";
 
+export interface PayerInput {
+  userId: string;
+  amount: string;
+}
+
 interface UseExpenseFormOptions {
   isOpen: boolean;
   initialData?: GroupExpense | undefined;
   members: GroupMember[];
   currency: string;
   onSubmit: (expense: GroupExpense) => Promise<void> | void;
+  manualItems?: Array<{ name: string; price: string }>;
+  itemAssignments?: Record<number, string[]>;
 }
 
 interface UseExpenseFormReturn {
@@ -35,6 +44,8 @@ interface UseExpenseFormReturn {
   setAmount: (v: string) => void;
   paidBy: string;
   setPaidBy: (v: string) => void;
+  payers: PayerInput[];
+  setPayers: (payers: PayerInput[]) => void;
   date: string;
   setDate: (v: string) => void;
   note: string;
@@ -73,11 +84,14 @@ export function useExpenseForm({
   members,
   currency,
   onSubmit,
+  manualItems,
+  itemAssignments,
 }: UseExpenseFormOptions): UseExpenseFormReturn {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [expenseName, setExpenseName] = useState("");
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(members[0]?.id ?? "");
+  const [payers, setPayers] = useState<PayerInput[]>([{ userId: members[0]?.id ?? "", amount: "" }]);
   const [date, setDate] = useState(todayISODate());
   const [note, setNote] = useState("");
   const [category, setCategory] = useState("General");
@@ -90,6 +104,9 @@ export function useExpenseForm({
 
   const totalAmount = useMemo(() => parseFloat(amount) || 0, [amount]);
   const discountAdjustedPreview = useMemo(() => {
+    if (splitType === "itemized") {
+      return calculateItemizedSplits(manualItems ?? [], itemAssignments ?? {});
+    }
     const selectedMemberIds = Object.entries(memberSplitInputs)
       .filter(([, split]) => split.selected)
       .map(([memberId]) => memberId);
@@ -119,7 +136,7 @@ export function useExpenseForm({
         {},
       ),
     );
-  }, [memberSplitInputs, splitType, totalAmount]);
+  }, [memberSplitInputs, splitType, totalAmount, manualItems, itemAssignments]);
 
   // ---------------------------------------------------------------------------
   // Reset / populate on open
@@ -130,6 +147,14 @@ export function useExpenseForm({
     setExpenseName(initialData?.name ?? "");
     setAmount(initialData?.amount.toString() ?? "");
     setPaidBy(initialData?.paidBy ?? members[0]?.id ?? "");
+    setPayers(
+      initialData?.payerAmounts?.length
+        ? initialData.payerAmounts.map((p: PayerEntry) => ({
+            userId: p.userId,
+            amount: p.amountPaid.toFixed(2),
+          }))
+        : [{ userId: initialData?.paidBy ?? members[0]?.id ?? "", amount: initialData?.amount?.toFixed(2) ?? "" }],
+    );
     setDate(initialData?.date ?? todayISODate());
     setNote(initialData?.note ?? "");
     setCategory(initialData?.category ?? "General");
@@ -139,6 +164,39 @@ export function useExpenseForm({
     setStep(1);
     setError("");
   }, [isOpen, initialData, members]);
+
+  // ---------------------------------------------------------------------------
+  // Auto-distribute total equally among payers when total or payer count changes
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (totalAmount <= 0 || payers.length === 0) return;
+
+    setPayers((prev) => {
+      const count = prev.length;
+      if (count === 0) return prev;
+
+      // If all payers already have amounts that sum to total, preserve manual entries
+      const allFilled = prev.every((p) => p.amount && parseFloat(p.amount) > 0);
+      const currentSum = prev.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+      if (allFilled && Math.abs(currentSum - totalAmount) < 0.01) {
+        return prev;
+      }
+
+      // Distribute equally, last payer gets rounding remainder
+      const equalShare = totalAmount / count;
+      const roundedAmount = parseFloat(equalShare.toFixed(2));
+      const sumPrev = roundedAmount * (count - 1);
+
+      return prev.map((payer, i) => ({
+        userId: payer.userId,
+        amount:
+          i < count - 1
+            ? roundedAmount.toFixed(2)
+            : (totalAmount - sumPrev).toFixed(2),
+      }));
+    });
+  }, [totalAmount, payers.length]);
 
   // ---------------------------------------------------------------------------
   // Auto-fill equal amounts when split type or total changes
@@ -319,6 +377,7 @@ export function useExpenseForm({
     setExpenseName("");
     setAmount("");
     setPaidBy(members[0]?.id ?? "");
+    setPayers([{ userId: members[0]?.id ?? "", amount: "" }]);
     setDate(todayISODate());
     setNote("");
     setCategory("General");
@@ -338,11 +397,65 @@ export function useExpenseForm({
       return;
     }
     setError("");
+
+    // Auto-fill any payer with empty amount before validating
+    const allHaveAmounts = payers.every((p) => p.amount && parseFloat(p.amount) > 0);
+    const currentSum = payers.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    const adjustedPayers =
+      !allHaveAmounts || Math.abs(currentSum - totalAmount) >= 0.01
+        ? (() => {
+            const count = payers.length;
+            const equalShare = totalAmount / count;
+            const roundedAmount = parseFloat(equalShare.toFixed(2));
+            const sumPrev = roundedAmount * (count - 1);
+            return payers.map((p, i) => ({
+              userId: p.userId,
+              amount:
+                i < count - 1
+                  ? roundedAmount.toFixed(2)
+                  : (totalAmount - sumPrev).toFixed(2),
+            }));
+          })()
+        : payers;
+
+    const payerTotal = adjustedPayers.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+    if (Math.abs(payerTotal - totalAmount) > 0.01) {
+      setError(`Payer amounts (${payerTotal.toFixed(2)}) must equal total amount (${totalAmount.toFixed(2)}).`);
+      return;
+    }
+
+    // Sync auto-filled amount back to state
+    if (adjustedPayers !== payers) {
+      setPayers(adjustedPayers);
+    }
+
     setStep(2);
   }
 
   function handleNextStep2() {
     setError("");
+
+    if (splitType === "itemized") {
+      const validItems = (manualItems ?? []).filter(
+        (item) => item.name.trim() && parseFloat(item.price) > 0,
+      );
+      if (validItems.length === 0) {
+        setError("No items to split. Add items in step 1 first.");
+        return;
+      }
+      for (let i = 0; i < (manualItems ?? []).length; i++) {
+        const item = manualItems?.[i];
+        if (!item?.name.trim() || parseFloat(item.price ?? "0") <= 0) continue;
+        if (!itemAssignments?.[i]?.length) {
+          setError(`"${item.name}" must be assigned to at least one member.`);
+          return;
+        }
+      }
+      const preview = calculateItemizedSplits(manualItems ?? [], itemAssignments ?? {});
+      setComputedSplits(preview);
+      setStep(3);
+      return;
+    }
 
     const selectedMemberIds = Object.entries(memberSplitInputs)
       .filter(([, split]) => split.selected)
@@ -397,27 +510,48 @@ export function useExpenseForm({
       return;
     }
 
+    const itemizedReceiptItems =
+      splitType === "itemized" && manualItems
+        ? manualItems
+            .filter((item) => item.name.trim() && parseFloat(item.price) > 0)
+            .map((item, idx) => ({
+              id: `item-${idx}`,
+              itemName: item.name.trim(),
+              price: parseFloat(item.price),
+              assignedUserIds: itemAssignments?.[idx] ?? [],
+            }))
+        : undefined;
+
     const expense: GroupExpense = {
       id: initialData?.id ?? generateExpenseId(),
       name: expenseName.trim(),
       amount: totalAmount,
       currency,
       paidBy,
+      payerAmounts: payers
+        .filter((p) => p.userId && parseFloat(p.amount) > 0)
+        .map((p) => ({
+          userId: p.userId,
+          amountPaid: parseFloat(p.amount),
+        })),
       date,
       note: note.trim(),
       category: category || "General",
       splitType,
-      splits: Object.entries(computedSplits)
-        .filter(([, amt]) => amt > 0)
-        .map(([memberId, amt]) => {
-          const raw = parseFloat(memberSplitInputs[memberId]?.amount ?? "0");
-          return {
-            memberId,
-            amount: amt,
-            ...(splitType === "percentage" && { percentage: raw }),
-            ...(splitType === "shares" && { share: raw }),
-          };
-        }),
+      ...(itemizedReceiptItems ? { receiptItems: itemizedReceiptItems } : {}),
+      splits: splitType === "itemized"
+        ? []
+        : Object.entries(computedSplits)
+            .filter(([, amt]) => amt > 0)
+            .map(([memberId, amt]) => {
+              const raw = parseFloat(memberSplitInputs[memberId]?.amount ?? "0");
+              return {
+                memberId,
+                amount: amt,
+                ...(splitType === "percentage" && { percentage: raw }),
+                ...(splitType === "shares" && { share: raw }),
+              };
+            }),
       memberDiscounts: Object.entries(memberSplitInputs)
         .filter(([, split]) => split.selected)
         .map(([memberId, split]) => ({
@@ -444,6 +578,8 @@ export function useExpenseForm({
     setAmount,
     paidBy,
     setPaidBy,
+    payers,
+    setPayers,
     date,
     setDate,
     note,

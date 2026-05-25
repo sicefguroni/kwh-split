@@ -4,6 +4,12 @@ export interface SettlementDashboardEntry {
   paidAmount: number;
 }
 
+export interface SettlementPlanEntry {
+  fromUserId: number;
+  toUserId: number;
+  amount: number;
+}
+
 export interface SettlementHistoryEntry {
   id: string;
   fromUserId: string;
@@ -19,6 +25,10 @@ export interface SettlementHistoryEntry {
 
 export interface SettlementDashboardResponse {
   dashboard: SettlementDashboardEntry[];
+}
+
+export interface SettlementPlanResponse {
+  plan: SettlementPlanEntry[];
 }
 
 export interface SettlementHistoryResponse {

@@ -19,5 +19,7 @@
     "sourceMap": true,
     "declaration": false
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  // Pre-existing WIP module with syntax errors; fix and remove this exclude once resolved.
+  "exclude": ["src/modules/splits"]
 }

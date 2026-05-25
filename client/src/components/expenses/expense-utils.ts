@@ -507,6 +507,25 @@ export function calculateSplits(
  * Floors all amounts to 2 decimal places, then adds any lost cents
  * to the first entry so the total always matches exactly.
  */
+export function calculateItemizedSplits(
+  manualItems: Array<{ name: string; price: string }>,
+  itemAssignments: Record<number, string[]>,
+): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [indexStr, assignedIds] of Object.entries(itemAssignments)) {
+    const index = parseInt(indexStr, 10);
+    const item = manualItems[index];
+    if (!item) continue;
+    const price = parseFloat(item.price);
+    if (price <= 0 || assignedIds.length === 0) continue;
+    const perPerson = price / assignedIds.length;
+    for (const memberId of assignedIds) {
+      result[memberId] = (result[memberId] ?? 0) + perPerson;
+    }
+  }
+  return result;
+}
+
 export function applyRoundingCorrection(
   splits: { memberId: string; amount: number }[],
   totalAmount: number,

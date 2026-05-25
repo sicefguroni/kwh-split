@@ -5,6 +5,7 @@ import { userRepository } from "../auth/auth.repository.js";
 import { hashPassword } from "../../utils/password.js";
 import { displayName } from "../../utils/display-name.js";
 import { badRequest, tooManyRequests } from "../../utils/errors.js";
+import { settlementsRepository } from "../settlements/settlements.repository.js";
 import { sendGroupInvitationEmail } from "./groups.mailer.js";
 import {
   groupsRepository,
@@ -251,6 +252,15 @@ export const groupsService = {
     const membership = await groupsRepository.findForUser(groupId, requesterId);
     if (!membership) {
       throw badRequest("You are not a member of this group", "not_a_member");
+    }
+
+    // Block leaving if user has unsettled expenses
+    const unsettledAmount = await settlementsRepository.getUnsettledAmountForUser(groupId, requesterId);
+    if (unsettledAmount > 0.005) {
+      throw badRequest(
+        "You cannot leave this group while you have unsettled expenses. Please settle them first.",
+        "unsettled_expenses",
+      );
     }
 
     const members = await groupsRepository.listMembers(groupId);

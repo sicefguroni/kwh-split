@@ -15,6 +15,7 @@ export interface GroupMember {
 export interface GroupExpenseSplit {
   memberId: string;
   amount: number;
+  originalAmount?: number | undefined;
   percentage?: number;
   share?: number;
   isSettled?: boolean;
@@ -27,12 +28,18 @@ export interface GroupExpenseItem {
   assignedUserIds: string[];
 }
 
+export interface PayerEntry {
+  userId: string;
+  amountPaid: number;
+}
+
 export interface GroupExpense {
   id: string;
   name: string;
   amount: number;
   currency: string;
   paidBy: string;
+  payerAmounts?: PayerEntry[];
   date: string;
   note?: string;
   category?: string;

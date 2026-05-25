@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { X, ArrowLeft, Lock, Unlock, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,26 +51,37 @@ export function AddExpenseModal({
   const [receiptFile, setReceiptFile] = useState<{ file: File; preview: string } | null>(null);
   const [manualItems, setManualItems] = useState<Array<{ name: string; price: string }>>([]);
   const [isItemsMode, setIsItemsMode] = useState(false);
+  const [itemAssignments, setItemAssignments] = useState<Record<number, string[]>>({});
 
   const handleExpenseSubmit = async (expense: Parameters<AddExpenseModalProps["onSubmit"]>[0]) => {
-    const validItems = manualItems.filter((item) => item.name.trim() && parseFloat(item.price) > 0);
-    if (validItems.length > 0) {
-      expense.receiptItems = validItems.map((item, idx) => ({
-        id: `item-${idx}`,
-        itemName: item.name.trim(),
-        price: parseFloat(item.price),
-        assignedUserIds: [],
-      }));
+    if (expense.splitType !== "itemized") {
+      const validItems = manualItems.filter((item) => item.name.trim() && parseFloat(item.price) > 0);
+      if (validItems.length > 0) {
+        expense.receiptItems = validItems.map((item, idx) => ({
+          id: `item-${idx}`,
+          itemName: item.name.trim(),
+          price: parseFloat(item.price),
+          assignedUserIds: [],
+        }));
+      }
     }
     await onSubmit(expense);
   };
 
-  const form = useExpenseForm({ isOpen, initialData, members, currency, onSubmit: handleExpenseSubmit });
+  const form = useExpenseForm({
+    isOpen,
+    initialData,
+    members,
+    currency,
+    onSubmit: handleExpenseSubmit,
+    manualItems,
+    itemAssignments,
+  });
   const {
     step,
     expenseName, setExpenseName,
     amount, setAmount,
-    paidBy, setPaidBy,
+    payers, setPayers,
     date, setDate,
     note, setNote,
     category, setCategory,
@@ -152,6 +163,7 @@ export function AddExpenseModal({
     if (isItemsMode) {
       setIsItemsMode(false);
       setManualItems([]);
+      setItemAssignments({});
     } else {
       setIsItemsMode(true);
       if (manualItems.length === 0) {
@@ -159,6 +171,46 @@ export function AddExpenseModal({
       }
     }
   };
+
+  const hasValidItems = manualItems.some(
+    (item) => item.name.trim() && parseFloat(item.price) > 0,
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!initialData?.receiptItems?.length) {
+      if (!isItemsMode) {
+        setManualItems([]);
+        setItemAssignments({});
+      }
+      return;
+    }
+    setIsItemsMode(true);
+    setManualItems(
+      initialData.receiptItems.map((item) => ({
+        name: item.itemName,
+        price: item.price.toFixed(2),
+      })),
+    );
+    const assignments: Record<number, string[]> = {};
+    initialData.receiptItems.forEach((item, idx) => {
+      if (item.assignedUserIds?.length) {
+        assignments[idx] = item.assignedUserIds;
+      }
+    });
+    setItemAssignments(assignments);
+  }, [isOpen, initialData]);
+
+  useEffect(() => {
+    if (!isItemsMode && splitType === "itemized") {
+      setSplitType("equal");
+    }
+  }, [isItemsMode]);
+
+  const splitTypeOptions = SPLIT_TYPE_OPTIONS.map((opt) => ({
+    ...opt,
+    disabled: opt.value === "itemized" && !hasValidItems && !isItemsMode,
+  }));
 
   if (!isOpen) return null;
 
@@ -407,18 +459,90 @@ export function AddExpenseModal({
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
-                  Paid by
-                </label>
-                <Select
-                  value={paidBy}
-                  onValueChange={setPaidBy}
-                  options={[{ label: "Select member", value: "", disabled: true }, ...memberOptions]}
-                  ariaLabel="Paid by"
-                  placeholder="Select member"
-                  triggerClassName="h-12 border-slate-200 bg-slate-50 text-slate-700 focus:ring-slate-400/20"
-                  menuClassName="border-slate-200"
-                />
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Who paid?
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPayers([...payers, { userId: members[0]?.id ?? "", amount: "" }]);
+                    }}
+                    className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                  >
+                    <Plus className="h-3 w-3" /> Add payer
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {payers.map((payer, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Select
+                        value={payer.userId}
+                        onValueChange={(value) => {
+                          const next = [...payers];
+                          next[idx] = { ...next[idx]!, userId: value };
+                          setPayers(next);
+                        }}
+                        options={memberOptions}
+                        ariaLabel={`Payer ${idx + 1}`}
+                        placeholder="Select member"
+                        triggerClassName="h-10 w-[160px] border-slate-200 bg-slate-50 text-sm text-slate-700 focus:ring-slate-400/20"
+                        menuClassName="border-slate-200"
+                      />
+                      <div className="relative">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                          {currency}
+                        </span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={payer.amount}
+                          onChange={(e) => {
+                            const next = [...payers];
+                            next[idx] = { ...next[idx]!, amount: e.target.value };
+                            setPayers(next);
+                          }}
+                          className="h-10 w-28 border-slate-200 bg-slate-50 pl-7 text-right text-sm font-bold tabular-nums"
+                        />
+                      </div>
+                      {payers.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPayers(payers.filter((_, i) => i !== idx));
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-red-500"
+                          aria-label="Remove payer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center justify-between rounded-xl bg-slate-100 px-3 py-2">
+                  <span className="text-xs font-medium text-slate-500">
+                    Total paid
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold tabular-nums text-slate-900">
+                      {currency} {payers.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0).toFixed(2)}
+                    </span>
+                    {totalAmount > 0 && (
+                      <span className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        Math.abs(payers.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0) - totalAmount) < 0.01
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-amber-100 text-amber-700",
+                      )}>
+                        {Math.abs(payers.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0) - totalAmount) < 0.01
+                          ? "✓ Matches"
+                          : `/ ${currency} ${totalAmount.toFixed(2)}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -472,14 +596,14 @@ export function AddExpenseModal({
                 <label className="mb-2 block text-sm font-semibold text-slate-700">
                   Split method
                 </label>
-                <Select
-                  value={splitType}
-                  onValueChange={(value) => setSplitType(value as SplitType)}
-                  options={[...SPLIT_TYPE_OPTIONS]}
-                  ariaLabel="Split type"
-                  triggerClassName="h-12 border-slate-200 bg-slate-50 text-slate-700 focus:ring-slate-400/20"
-                  menuClassName="border-slate-200"
-                />
+                  <Select
+                    value={splitType}
+                    onValueChange={(value) => setSplitType(value as SplitType)}
+                    options={splitTypeOptions}
+                    ariaLabel="Split type"
+                    triggerClassName="h-12 border-slate-200 bg-slate-50 text-slate-700 focus:ring-slate-400/20"
+                    menuClassName="border-slate-200"
+                  />
               </div>
 
               {splitType === "exact" ? (
@@ -504,115 +628,205 @@ export function AddExpenseModal({
                 </div>
               ) : null}
 
-              <div>
-                <p className="mb-2 text-sm font-semibold text-slate-700">Member allocations</p>
-                <div className="max-h-64 space-y-2 overflow-y-auto">
-                  {members.map((member) => {
-                    const splitInput = memberSplitInputs[member.id];
-                    const isLocked =
-                      (splitInput as MemberSplitInput & { locked?: boolean } | undefined)?.locked ?? false;
-                    return (
-                      <div
-                        key={member.id}
-                        className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={splitInput?.selected ?? false}
-                          onChange={(e) => toggleMemberSelected(member.id, e.target.checked)}
-                          aria-label={`Include ${member.name} in split`}
-                          className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
-                        />
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <span className="text-sm font-semibold text-slate-900">{member.name}</span>
-                          {splitInput?.selected ? (
-                            <Select
-                              value={splitInput.discountType ?? "none"}
-                              onValueChange={(value) =>
-                                updateMemberDiscountType(member.id, value as "none" | "pwd" | "senior")
-                              }
-                              options={[
-                                { label: "No discount", value: "none" },
-                                { label: "PWD (20%)", value: "pwd" },
-                                { label: "Senior (20%)", value: "senior" },
-                              ]}
-                              ariaLabel={`Discount type for ${member.name}`}
-                              placeholder="No discount"
-                              triggerClassName="mt-1 h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-600"
-                              menuClassName="border-slate-200"
-                            />
-                          ) : null}
-                        </div>
-
-                        {splitInput?.selected && splitType === "equal" && (
-                          <div className="flex w-28 items-center gap-1 text-right">
-                            <span className="text-sm text-slate-500">{currency}</span>
-                            <span className="flex-1 text-sm font-semibold tabular-nums text-slate-900">
-                              {parseFloat(splitInput.amount || "0").toFixed(2)}
+              {splitType === "itemized" ? (
+                <div className="space-y-3">
+                  <p className="text-sm font-semibold text-slate-700">
+                    Assign items to members
+                  </p>
+                  <div className="max-h-80 space-y-2 overflow-y-auto">
+                    {manualItems.map((item, idx) => {
+                      if (!item.name.trim() || parseFloat(item.price) <= 0) return null;
+                      const assignedIds = itemAssignments[idx] ?? [];
+                      return (
+                        <div
+                          key={idx}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-sm font-semibold text-slate-900">
+                              {item.name}
+                            </span>
+                            <span className="text-sm font-bold text-slate-900">
+                              {currency} {parseFloat(item.price).toFixed(2)}
                             </span>
                           </div>
-                        )}
-
-                        {splitInput?.selected && (splitType === "exact" || splitType === "percentage") && (
-                          <div className="flex w-40 items-center gap-2">
+                          <div className="space-y-1">
+                            {members.map((member) => (
+                              <label
+                                key={member.id}
+                                className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 hover:bg-white/60"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={assignedIds.includes(member.id)}
+                                  onChange={() => {
+                                    setItemAssignments((prev) => {
+                                      const current = [...(prev[idx] ?? [])];
+                                      const pos = current.indexOf(member.id);
+                                      if (pos > -1) {
+                                        current.splice(pos, 1);
+                                      } else {
+                                        current.push(member.id);
+                                      }
+                                      return { ...prev, [idx]: current };
+                                    });
+                                  }}
+                                  className="h-4 w-4 rounded border-slate-300 text-slate-900"
+                                />
+                                <span className="text-sm text-slate-700">{member.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="mt-2 flex gap-3">
                             <button
                               type="button"
-                              aria-label={isLocked ? `Unlock ${member.name}` : `Lock ${member.name}`}
-                              className={cn(
-                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
-                                isLocked
-                                  ? "border-slate-400 bg-slate-200 text-slate-700"
-                                  : "border-slate-200 bg-white text-slate-400",
-                              )}
-                              onClick={() => toggleMemberLock(member.id)}
+                              onClick={() =>
+                                setItemAssignments((prev) => ({
+                                  ...prev,
+                                  [idx]: members.map((m) => m.id),
+                                }))
+                              }
+                              className="text-xs font-medium text-blue-600 hover:text-blue-800"
                             >
-                              {isLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                              Select all
                             </button>
-                            <span className="w-5 text-sm text-slate-500">
-                              {splitType === "exact" ? currency : "%"}
-                            </span>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              placeholder="0.00"
-                              value={splitInput.amount}
-                              disabled={isLocked}
-                              onChange={(e) => {
-                                if (splitType === "exact") { updateExactAmount(member.id, e.target.value); return; }
-                                updateMemberSplitInput(member.id, { amount: e.target.value });
-                              }}
-                              onBlur={(e) => {
-                                const formatted = e.target.value === "" ? "" : parseFloat(e.target.value).toFixed(2);
-                                if (splitType === "exact") { updateExactAmount(member.id, formatted); return; }
-                                updateMemberSplitInput(member.id, { amount: formatted });
-                              }}
-                              className="h-9 flex-1 border-slate-200 bg-white text-right text-sm tabular-nums"
-                            />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setItemAssignments((prev) => ({
+                                  ...prev,
+                                  [idx]: [],
+                                }))
+                              }
+                              className="text-xs font-medium text-slate-500 hover:text-slate-700"
+                            >
+                              Clear
+                            </button>
                           </div>
-                        )}
-
-                        {splitInput?.selected && splitType === "shares" && (
-                          <div className="flex w-32 items-center gap-2">
-                            <Input
-                              type="number"
-                              step="1"
-                              placeholder="0"
-                              value={splitInput.amount}
-                              onChange={(e) => updateMemberSplitInput(member.id, { amount: e.target.value })}
-                              onBlur={(e) => {
-                                const formatted = e.target.value === "" ? "" : parseFloat(e.target.value).toFixed(2);
-                                updateMemberSplitInput(member.id, { amount: formatted });
-                              }}
-                              className="h-9 flex-1 border-slate-200 bg-white text-right text-sm tabular-nums"
-                            />
-                            <span className="text-xs text-slate-500">shares</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-blue-50 px-4 py-2.5">
+                    <span className="text-xs font-medium text-blue-900">Items with assignments</span>
+                    <span className="text-xs text-blue-700">
+                      {manualItems.filter((i, idx) => i.name.trim() && parseFloat(i.price) > 0 && (itemAssignments[idx]?.length ?? 0) > 0).length}
+                      {" "}/{" "}
+                      {manualItems.filter((i) => i.name.trim() && parseFloat(i.price) > 0).length}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-slate-700">Member allocations</p>
+                  <div className="max-h-64 space-y-2 overflow-y-auto">
+                    {members.map((member) => {
+                      const splitInput = memberSplitInputs[member.id];
+                      const isLocked =
+                        (splitInput as MemberSplitInput & { locked?: boolean } | undefined)?.locked ?? false;
+                      return (
+                        <div
+                          key={member.id}
+                          className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={splitInput?.selected ?? false}
+                            onChange={(e) => toggleMemberSelected(member.id, e.target.checked)}
+                            aria-label={`Include ${member.name} in split`}
+                            className="h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                          />
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="text-sm font-semibold text-slate-900">{member.name}</span>
+                            {splitInput?.selected ? (
+                              <Select
+                                value={splitInput.discountType ?? "none"}
+                                onValueChange={(value) =>
+                                  updateMemberDiscountType(member.id, value as "none" | "pwd" | "senior")
+                                }
+                                options={[
+                                  { label: "No discount", value: "none" },
+                                  { label: "PWD (20%)", value: "pwd" },
+                                  { label: "Senior (20%)", value: "senior" },
+                                ]}
+                                ariaLabel={`Discount type for ${member.name}`}
+                                placeholder="No discount"
+                                triggerClassName="mt-1 h-7 rounded-lg border border-slate-200 bg-white px-2 text-[11px] text-slate-600"
+                                menuClassName="border-slate-200"
+                              />
+                            ) : null}
+                          </div>
+
+                          {splitInput?.selected && splitType === "equal" && (
+                            <div className="flex w-28 items-center gap-1 text-right">
+                              <span className="text-sm text-slate-500">{currency}</span>
+                              <span className="flex-1 text-sm font-semibold tabular-nums text-slate-900">
+                                {parseFloat(splitInput.amount || "0").toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+
+                          {splitInput?.selected && (splitType === "exact" || splitType === "percentage") && (
+                            <div className="flex w-40 items-center gap-2">
+                              <button
+                                type="button"
+                                aria-label={isLocked ? `Unlock ${member.name}` : `Lock ${member.name}`}
+                                className={cn(
+                                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
+                                  isLocked
+                                    ? "border-slate-400 bg-slate-200 text-slate-700"
+                                    : "border-slate-200 bg-white text-slate-400",
+                                )}
+                                onClick={() => toggleMemberLock(member.id)}
+                              >
+                                {isLocked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
+                              </button>
+                              <span className="w-5 text-sm text-slate-500">
+                                {splitType === "exact" ? currency : "%"}
+                              </span>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                value={splitInput.amount}
+                                disabled={isLocked}
+                                onChange={(e) => {
+                                  if (splitType === "exact") { updateExactAmount(member.id, e.target.value); return; }
+                                  updateMemberSplitInput(member.id, { amount: e.target.value });
+                                }}
+                                onBlur={(e) => {
+                                  const formatted = e.target.value === "" ? "" : parseFloat(e.target.value).toFixed(2);
+                                  if (splitType === "exact") { updateExactAmount(member.id, formatted); return; }
+                                  updateMemberSplitInput(member.id, { amount: formatted });
+                                }}
+                                className="h-9 flex-1 border-slate-200 bg-white text-right text-sm tabular-nums"
+                              />
+                            </div>
+                          )}
+
+                          {splitInput?.selected && splitType === "shares" && (
+                            <div className="flex w-32 items-center gap-2">
+                              <Input
+                                type="number"
+                                step="1"
+                                placeholder="0"
+                                value={splitInput.amount}
+                                onChange={(e) => updateMemberSplitInput(member.id, { amount: e.target.value })}
+                                onBlur={(e) => {
+                                  const formatted = e.target.value === "" ? "" : parseFloat(e.target.value).toFixed(2);
+                                  updateMemberSplitInput(member.id, { amount: formatted });
+                                }}
+                                className="h-9 flex-1 border-slate-200 bg-white text-right text-sm tabular-nums"
+                              />
+                              <span className="text-xs text-slate-500">shares</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-auto flex gap-3 pt-2">
                 <Button type="button" variant="secondary" onClick={() => goToStep(1)} className="flex-1">

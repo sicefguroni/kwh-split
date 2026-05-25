@@ -103,20 +103,16 @@ export default function DashboardPage() {
         }
 
         const net = expenses.reduce((sum, expense) => {
-          const payerId = expense.paidByUserId;
-          if (!payerId) return sum;
-
-          if (payerId === viewerId) {
-            const othersUnsettled = expense.splits
-              .filter((split) => split.userId !== viewerId && !split.isSettled)
-              .reduce((subtotal, split) => subtotal + split.amountOwed, 0);
-            return sum + othersUnsettled;
+          let viewerPaid = 0;
+          if (expense.payerAmounts?.length) {
+            viewerPaid = expense.payerAmounts.find((p) => p.userId === viewerId)?.amountPaid ?? 0;
+          } else if (expense.paidByUserId === viewerId) {
+            viewerPaid = expense.totalAmount;
           }
 
-          const viewerSplit = expense.splits.find(
-            (split) => split.userId === viewerId && !split.isSettled,
-          );
-          return sum - (viewerSplit?.amountOwed ?? 0);
+          const viewerShare = expense.splits.find((s) => s.userId === viewerId)?.amountOwed ?? 0;
+
+          return sum + (viewerPaid - viewerShare);
         }, 0);
 
         return {

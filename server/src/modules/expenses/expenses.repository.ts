@@ -29,6 +29,7 @@ export interface ExpenseSplitRecord {
   expense_id: number;
   user_id: number;
   amount_owed: string;
+  original_amount: string | null;
   percentage: string | null;
   share: string | null;
   is_settled: boolean;
@@ -49,6 +50,13 @@ export interface ExpenseMemberDiscountRecord {
   rate_percent: string;
 }
 
+export interface ExpensePayerRecord {
+  id: number;
+  expense_id: number;
+  user_id: number;
+  amount_paid: string;
+}
+
 export const expensesRepository = {
   async listGroupMemberIds(groupId: number): Promise<number[]> {
     const { rows } = await pool.query<{ user_id: number }>(
@@ -56,6 +64,33 @@ export const expensesRepository = {
       [groupId],
     );
     return rows.map((row) => row.user_id);
+  },
+
+  async insertExpensePayers(client: import("pg").PoolClient, expenseId: number, payers: { userId: number; amountPaid: number }[]): Promise<void> {
+    for (const payer of payers) {
+      await client.query(
+        `INSERT INTO expense_payers (expense_id, user_id, amount_paid)
+         VALUES ($1, $2, $3::numeric(10,2))
+         ON CONFLICT (expense_id, user_id)
+         DO UPDATE SET amount_paid = EXCLUDED.amount_paid`,
+        [expenseId, payer.userId, payer.amountPaid],
+      );
+    }
+  },
+
+  async listPayerEntries(expenseId: number): Promise<ExpensePayerRecord[]> {
+    const { rows } = await pool.query<ExpensePayerRecord>(
+      `SELECT id, expense_id, user_id, amount_paid::text
+       FROM expense_payers
+       WHERE expense_id = $1
+       ORDER BY id ASC`,
+      [expenseId],
+    );
+    return rows;
+  },
+
+  async deleteExpensePayers(expenseId: number): Promise<void> {
+    await pool.query(`DELETE FROM expense_payers WHERE expense_id = $1`, [expenseId]);
   },
 
   async createWithDetails(input: {
@@ -136,6 +171,10 @@ export const expensesRepository = {
         );
       }
 
+      // Insert expense_payers (service layer always resolves payerUserIds before calling this)
+      const payers = input.expense.payerUserIds!;
+      await expensesRepository.insertExpensePayers(client, expenseId, payers);
+
       await client.query("COMMIT");
       return expenseId;
     } catch (error) {
@@ -214,6 +253,7 @@ export const expensesRepository = {
       await client.query(`DELETE FROM expense_splits WHERE expense_id = $1`, [input.expenseId]);
       await client.query(`DELETE FROM receipt_items WHERE expense_id = $1`, [input.expenseId]);
       await client.query(`DELETE FROM expense_member_discounts WHERE expense_id = $1`, [input.expenseId]);
+      await client.query(`DELETE FROM expense_payers WHERE expense_id = $1`, [input.expenseId]);
 
       for (const split of input.splits) {
         const alreadyPaid = paidByUser.get(split.userId) ?? 0;
@@ -257,6 +297,11 @@ export const expensesRepository = {
           ],
         );
       }
+
+      // Re-insert expense_payers (service layer always resolves payerUserIds before calling this)
+      const payers = input.expense.payerUserIds!;
+      await expensesRepository.insertExpensePayers(client, input.expenseId, payers);
+
       await client.query("COMMIT");
       return true;
     } catch (error) {
@@ -287,7 +332,7 @@ export const expensesRepository = {
 
   async listSplits(expenseId: number): Promise<ExpenseSplitRecord[]> {
     const { rows } = await pool.query<ExpenseSplitRecord>(
-      `SELECT split_id, expense_id, user_id, amount_owed::text, percentage::text, share::text, is_settled
+      `SELECT split_id, expense_id, user_id, amount_owed::text, original_amount::text, percentage::text, share::text, is_settled
        FROM expense_splits
        WHERE expense_id = $1
        ORDER BY split_id ASC`,
@@ -368,8 +413,8 @@ export const expensesRepository = {
 
       for (const split of splits) {
         await client.query(
-          `INSERT INTO expense_splits (expense_id, user_id, amount_owed, percentage, share)
-           VALUES ($1, $2, $3::numeric(10,2), $4, $5::numeric(10,2))`,
+          `INSERT INTO expense_splits (expense_id, user_id, amount_owed, original_amount, percentage, share)
+           VALUES ($1, $2, $3::numeric(10,2), $3::numeric(10,2), $4, $5::numeric(10,2))`,
           [expenseId, split.userId, split.amountOwed, split.percentage, split.share],
         );
       }

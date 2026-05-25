@@ -1,11 +1,17 @@
 import { apiClient } from "@/lib/api-client";
 import type { ExpensesResponse } from "./types";
 
+export interface PayerUserEntry {
+  userId: number;
+  amountPaid: number;
+}
+
 export interface ExpenseWritePayload {
   groupId: number;
   titleDescription: string;
   totalAmount: number;
   paidByUserId?: number;
+  payerUserIds?: PayerUserEntry[];
   saleDate: string;
   taxAmount?: number;
   tipAmount?: number;
