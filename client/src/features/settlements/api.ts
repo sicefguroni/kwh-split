@@ -2,11 +2,14 @@ import { apiClient } from "@/lib/api-client";
 import type {
   SettlementDashboardResponse,
   SettlementHistoryResponse,
+  SettlementPlanResponse,
 } from "./types";
 
 export const settlementsApi = {
   dashboard: (groupId: string) =>
     apiClient.get<SettlementDashboardResponse>(`/api/settlements/${groupId}`),
+  plan: (groupId: string) =>
+    apiClient.get<SettlementPlanResponse>(`/api/settlements/${groupId}/plan`),
   history: (groupId: string) =>
     apiClient.get<SettlementHistoryResponse>(`/api/settlements/${groupId}/history`),
   markPaid: (
