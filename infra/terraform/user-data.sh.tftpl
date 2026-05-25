@@ -1,0 +1,149 @@
+#!/bin/bash
+exec > /var/log/split-bootstrap.log 2>&1
+set -ex
+
+export HOME=/home/ec2-user
+
+# 1. Install Node 22 + pnpm
+curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+yum install -y nodejs git
+npm install -g pnpm@9.15.4
+
+# 2. Clone repo
+git clone --branch dev https://github.com/sicefguroni/kwh-split.git /home/ec2-user/app
+cd /home/ec2-user/app
+
+# 3. Write env file
+mkdir -p /etc/split
+cat > /etc/split/env << 'ENVEOF'
+DATABASE_URL=${database_url}
+JWT_SECRET=${jwt_secret}
+NODE_ENV=production
+PORT=4000
+COOKIE_SECURE=true
+WEB_ORIGIN=https://${site_domain}
+OAUTH_CALLBACK_BASE_URL=https://${site_domain}
+SMTP_FROM="${smtp_from}"
+SES_REGION=${aws_region}
+AWS_REGION=${aws_region}
+%{ if google_client_id != "" }
+GOOGLE_CLIENT_ID=${google_client_id}
+GOOGLE_CLIENT_SECRET=${google_client_secret}
+%{ endif }
+%{ if ocr_api_key != "" }
+OCR_API_KEY=${ocr_api_key}
+%{ endif }
+ENVEOF
+
+# 4. Install Redis
+yum install -y redis6
+systemctl enable --now redis6
+
+# 5. Install dependencies + build
+chown -R ec2-user:ec2-user /home/ec2-user/app
+sudo -u ec2-user pnpm install
+sudo -u ec2-user pnpm --filter @split/server run build
+
+# 5. Copy SQL migration files (tsc does not copy .sql)
+cp -r server/src/db/migrations server/dist/db/migrations
+
+# 6. Wait for DB, then run migrations
+for i in $(seq 1 30); do
+  set -a; source /etc/split/env; set +a
+  node server/dist/db/migrate.js && break
+  echo "DB not ready, retry $i..."
+  sleep 10
+done
+
+# 7. Build client + sync to S3
+%{ if site_bucket != "" }
+sudo -u ec2-user pnpm --filter @split/client run build
+aws s3 sync client/dist "s3://${site_bucket}/" --delete
+aws cloudfront create-invalidation --distribution-id "${cf_dist_id}" --paths "/*"
+%{ endif }
+
+# 8. Write systemd unit for API
+cat > /etc/systemd/system/split-api.service << 'UNIT'
+[Unit]
+Description=Split API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ec2-user/app/server
+ExecStart=/usr/bin/node dist/index.js
+EnvironmentFile=/etc/split/env
+Restart=always
+RestartSec=5
+User=ec2-user
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# 9. Write systemd unit for Worker
+cat > /etc/systemd/system/split-worker.service << 'UNIT'
+[Unit]
+Description=Split Worker
+After=split-api.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ec2-user/app/server
+ExecStart=/usr/bin/node dist/notification-worker.js
+EnvironmentFile=/etc/split/env
+Restart=always
+RestartSec=5
+User=ec2-user
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# 10. Weekly summary timer (replaces Lambda)
+cat > /etc/systemd/system/split-weekly-summary.service << 'UNIT'
+[Unit]
+Description=Weekly Summary
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/node /home/ec2-user/app/server/dist/lambdas/weekly-summary.cjs
+EnvironmentFile=/etc/split/env
+User=ec2-user
+UNIT
+
+cat > /etc/systemd/system/split-weekly-summary.timer << 'UNIT'
+[Unit]
+Description=Weekly Summary Schedule
+[Timer]
+OnCalendar=Sun *-*-* 23:59:00
+[Install]
+WantedBy=timers.target
+UNIT
+
+# 11. Debt reminders timer (replaces Lambda)
+cat > /etc/systemd/system/split-debt-reminders.service << 'UNIT'
+[Unit]
+Description=Debt Reminders
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/node /home/ec2-user/app/server/dist/lambdas/debt-reminders.cjs
+EnvironmentFile=/etc/split/env
+User=ec2-user
+UNIT
+
+cat > /etc/systemd/system/split-debt-reminders.timer << 'UNIT'
+[Unit]
+Description=Debt Reminders Schedule
+[Timer]
+OnCalendar=*-*-* 08:00:00
+[Install]
+WantedBy=timers.target
+UNIT
+
+# 12. Enable + start everything
+systemctl daemon-reload
+systemctl enable --now split-api.service split-worker.service
+systemctl enable --now split-weekly-summary.timer split-debt-reminders.timer
+
+echo "Bootstrap complete"
