@@ -150,7 +150,6 @@ export const userRepository = {
     if (input.discountType !== undefined) {
       updates.push(`discount_type = $${paramCount}`);
       values.push(input.discountType);
-      paramCount++;
     }
 
     if (updates.length === 0) {

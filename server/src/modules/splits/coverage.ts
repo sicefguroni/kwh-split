@@ -1,5 +1,3 @@
-import type { Expense } from 'server/src/modules/expenses/expenses.schemas'
-
 export type CoverageEntry = {
   id: number
   expenseId: number

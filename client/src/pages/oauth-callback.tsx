@@ -1,9 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Spinner } from "@/components/ui/spinner";
-import { authApi } from "@/features/auth/api";
 import { useCurrentUser } from "@/features/auth/use-auth";
-import { queryClient } from "@/lib/query-client";
 import { getLoginRedirectForOauthError, getOauthErrorMessage } from "./oauth-callback.utils";
 
 export default function OauthCallbackPage() {
@@ -17,32 +15,19 @@ export default function OauthCallbackPage() {
   const errorMessage = useMemo(() => getOauthErrorMessage(code), [code]);
 
   useEffect(() => {
-    let isMounted = true;
+    if (status !== "success" && status !== "error") return;
 
-    const complete = async () => {
-      if (status === "success") {
-        if (!currentUser) {
-          const { user } = await authApi.me();
-          if (isMounted) {
-            queryClient.setQueryData(["auth", "me"], user);
-          }
-        }
-        if (isMounted) {
-          navigate(redirectPath, { replace: true });
-        }
-        return;
-      }
+    if (status === "error") {
+      navigate(getLoginRedirectForOauthError(errorMessage, redirectPath), { replace: true });
+      return;
+    }
 
-      if (isMounted) {
-        navigate(getLoginRedirectForOauthError(errorMessage, redirectPath), { replace: true });
-      }
-    };
-
-    void complete();
-
-    return () => {
-      isMounted = false;
-    };
+    if (currentUser === undefined) return;
+    if (!currentUser) {
+      navigate(getLoginRedirectForOauthError("Unable to verify session", redirectPath), { replace: true });
+      return;
+    }
+    navigate(redirectPath, { replace: true });
   }, [currentUser, errorMessage, navigate, redirectPath, status]);
 
   return (

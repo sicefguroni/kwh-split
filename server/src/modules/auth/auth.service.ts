@@ -88,8 +88,8 @@ const parseUserId = (subject: string): number => {
 
 const GOOGLE_ISSUERS = new Set(["https://accounts.google.com", "accounts.google.com"]);
 const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
-const oauthCallbackUrl = (provider: AuthProvider): string =>
-  `${env.OAUTH_CALLBACK_BASE_URL}/api/auth/${provider}/callback`;
+const oauthCallbackUrl = (provider: AuthProvider, baseUrl?: string): string =>
+  `${baseUrl ?? env.OAUTH_CALLBACK_BASE_URL}/api/auth/${provider}/callback`;
 
 const encodeParams = (params: Record<string, string>): string =>
   new URLSearchParams(params).toString();
@@ -143,7 +143,7 @@ const fetchJson = async <T>(url: string, init?: RequestInit): Promise<T> => {
   return (await response.json()) as T;
 };
 
-const getGoogleIdentity = async (code: string): Promise<OAuthIdentity> => {
+const getGoogleIdentity = async (code: string, redirectUri?: string): Promise<OAuthIdentity> => {
   assertProviderConfig("google");
   const clientId = env.GOOGLE_CLIENT_ID!;
   const clientSecret = env.GOOGLE_CLIENT_SECRET!;
@@ -156,7 +156,7 @@ const getGoogleIdentity = async (code: string): Promise<OAuthIdentity> => {
         code,
         client_id: clientId,
         client_secret: clientSecret,
-        redirect_uri: oauthCallbackUrl("google"),
+        redirect_uri: redirectUri ?? oauthCallbackUrl("google"),
         grant_type: "authorization_code",
       }),
     },
@@ -235,6 +235,7 @@ export const authService = {
   async createProviderStartUrl(
     provider: AuthProvider,
     redirectPath?: string,
+    origin?: string,
   ): Promise<{ authorizationUrl: string; stateToken: string; stateNonce: string }> {
     assertProviderConfig(provider);
     const stateNonce = randomUUID();
@@ -244,7 +245,7 @@ export const authService = {
 
     const common = {
       state: stateNonce,
-      redirect_uri: oauthCallbackUrl(provider),
+      redirect_uri: oauthCallbackUrl(provider, origin),
     };
     if (provider === "google") {
       const clientId = env.GOOGLE_CLIENT_ID!;
@@ -270,13 +271,15 @@ export const authService = {
     code: string;
     returnedState: string;
     stateToken: string;
+    origin?: string;
   }): Promise<AuthResult> {
     const state = await verifyOAuthStateToken(input.stateToken);
     if (state.provider !== input.provider || state.nonce !== input.returnedState) {
       throw badRequest("OAuth state mismatch", "oauth_state_mismatch");
     }
 
-    const identity = await getGoogleIdentity(input.code);
+    const redirectUri = input.origin ? oauthCallbackUrl(input.provider, input.origin) : undefined;
+    const identity = await getGoogleIdentity(input.code, redirectUri);
 
     if (!identity.emailVerified) {
       throw badRequest("Verified email is required", "oauth_email_unverified");
@@ -332,8 +335,8 @@ export const authService = {
     }
   },
 
-  buildOAuthResultRedirect(input: { ok: boolean; code?: string; redirectPath?: string }): string {
-    const base = new URL("/oauth/callback", env.WEB_ORIGIN);
+  buildOAuthResultRedirect(input: { ok: boolean; code?: string; redirectPath?: string }, webOrigin?: string): string {
+    const base = new URL("/oauth/callback", webOrigin ?? env.WEB_ORIGIN);
     base.searchParams.set("status", input.ok ? "success" : "error");
     if (input.code) {
       base.searchParams.set("code", parseOAuthErrorCode(input.code));

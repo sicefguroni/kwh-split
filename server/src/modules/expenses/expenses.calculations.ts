@@ -304,7 +304,6 @@ export const calculateTaxAndTipDistribution = (
   tipAmount: number,
   userAmounts: Array<{ userId: number; itemAmount: number }>,
 ): Array<{ userId: number; taxAndTipAmount: number }> => {
-  const subtotalCents = toCents(subtotal);
   const taxCents = toCents(taxAmount);
   const tipCents = toCents(tipAmount);
 

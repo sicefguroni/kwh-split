@@ -1,4 +1,4 @@
-import { Expense, ExpenseCreate } from 'server/src/modules/expenses/expenses.schemas'
+import { Expense } from 'server/src/modules/expenses/expenses.schemas'
 import type { GroupMemberDiscount } from 'server/src/modules/groups/group.schemas'
 
 export type Split = {
@@ -231,12 +231,13 @@ function calculateItemizedSplits(expense: Expense): Split[] {
 function applyDiscounts(
   splits: Split[],
   discounts: GroupMemberDiscount[],
-  prorationMethod: DiscountProrationMethod
+  _prorationMethod: DiscountProrationMethod
 ): Split[] {
   if (discounts.length === 0) {
     return splits
   }
 
+  const participantUserIds = splits.map(s => s.userId)
   const participantSet = new Set(participantUserIds)
   const discountEligible = discounts.filter(d => participantSet.has(d.userId))
   if (discountEligible.length === 0) {
